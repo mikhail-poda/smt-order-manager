@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SmtOrderManager.Infrastructure\SmtOrderManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\SmtOrderManager.Application\SmtOrderManager.Application.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+</Project>

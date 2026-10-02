@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmtOrderManager.Application/SmtOrderManager.Application.csproj" />
+    <Project Path="src/SmtOrderManager.Cli/SmtOrderManager.Cli.csproj" />
+    <Project Path="src/SmtOrderManager.Domain/SmtOrderManager.Domain.csproj" />
+    <Project Path="src/SmtOrderManager.Infrastructure/SmtOrderManager.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmtOrderManager.Domain.Tests/SmtOrderManager.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
