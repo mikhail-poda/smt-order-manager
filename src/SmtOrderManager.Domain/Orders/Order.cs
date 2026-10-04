@@ -6,6 +6,11 @@ namespace SmtOrderManager.Domain.Orders;
 /// A production order: a production job that states which boards to build and how many of
 /// each. "Order" always means a production order, never a customer order.
 /// </summary>
+/// <remarks>
+/// An order starts as a draft. Once an SMT line has accepted it, it is downloaded and can no
+/// longer be edited, because the line would otherwise produce something other than what the
+/// system shows.
+/// </remarks>
 public sealed class Order : AggregateRoot
 {
     private readonly List<OrderLine> _lines;
@@ -15,15 +20,18 @@ public sealed class Order : AggregateRoot
         string name,
         string? description,
         DateTimeOffset orderDate,
-        IEnumerable<OrderLine> lines)
+        IEnumerable<OrderLine> lines,
+        OrderStatus status,
+        DateTimeOffset? downloadedAt)
         : base(id)
     {
         ArgumentNullException.ThrowIfNull(lines);
 
         Name = Guard.NotBlank(name, nameof(Name));
         Description = NormalizeDescription(description);
-        OrderDate = ValidateOrderDate(orderDate);
+        OrderDate = ValidateTimestamp(orderDate, nameof(OrderDate));
         _lines = ValidateLines(lines);
+        (Status, DownloadedAt) = ValidateStatus(status, downloadedAt);
     }
 
     /// <summary>
@@ -48,32 +56,62 @@ public sealed class Order : AggregateRoot
     public IReadOnlyList<OrderLine> Lines => _lines.AsReadOnly();
 
     /// <summary>
-    /// Creates a new order with a newly generated identifier.
+    /// The lifecycle state of the order.
+    /// </summary>
+    public OrderStatus Status { get; private set; }
+
+    /// <summary>
+    /// The point in time of the most recent accepted download. Set exactly when the order is
+    /// downloaded.
+    /// </summary>
+    public DateTimeOffset? DownloadedAt { get; private set; }
+
+    /// <summary>
+    /// Whether the order can still be edited and removed.
+    /// </summary>
+    public bool IsEditable => Status == OrderStatus.Draft;
+
+    /// <summary>
+    /// Creates a new draft order with a newly generated identifier.
     /// </summary>
     public static Order Create(
         string name,
         string? description,
         DateTimeOffset orderDate,
         IEnumerable<OrderLine> lines) =>
-        new(Guid.NewGuid(), name, description, orderDate, lines);
+        new(Guid.NewGuid(), name, description, orderDate, lines, OrderStatus.Draft, downloadedAt: null);
 
     /// <summary>
-    /// Rebuilds a persisted order with its existing identifier. The same rules apply as for a
-    /// new order, so invalid stored data is detected when it is loaded.
+    /// Rebuilds a persisted order with its existing identifier and status. The same rules apply
+    /// as for a new order, so invalid stored data is detected when it is loaded.
     /// </summary>
     public static Order Restore(
         Guid id,
         string name,
         string? description,
         DateTimeOffset orderDate,
-        IEnumerable<OrderLine> lines) =>
-        new(id, name, description, orderDate, lines);
+        IEnumerable<OrderLine> lines,
+        OrderStatus status,
+        DateTimeOffset? downloadedAt) =>
+        new(id, name, description, orderDate, lines, status, downloadedAt);
 
-    public void Rename(string name) => Name = Guard.NotBlank(name, nameof(Name));
+    public void Rename(string name)
+    {
+        EnsureEditable();
+        Name = Guard.NotBlank(name, nameof(Name));
+    }
 
-    public void ChangeDescription(string? description) => Description = NormalizeDescription(description);
+    public void ChangeDescription(string? description)
+    {
+        EnsureEditable();
+        Description = NormalizeDescription(description);
+    }
 
-    public void ChangeOrderDate(DateTimeOffset orderDate) => OrderDate = ValidateOrderDate(orderDate);
+    public void ChangeOrderDate(DateTimeOffset orderDate)
+    {
+        EnsureEditable();
+        OrderDate = ValidateTimestamp(orderDate, nameof(OrderDate));
+    }
 
     /// <summary>
     /// Adds an order line for the board, or replaces the existing line for that board with a
@@ -81,6 +119,8 @@ public sealed class Order : AggregateRoot
     /// </summary>
     public void SetLine(Guid boardId, int quantity)
     {
+        EnsureEditable();
+
         var line = new OrderLine(boardId, quantity);
         var index = IndexOf(boardId);
 
@@ -100,6 +140,8 @@ public sealed class Order : AggregateRoot
     /// </summary>
     public void RemoveLine(Guid boardId)
     {
+        EnsureEditable();
+
         var index = IndexOf(boardId);
 
         if (index < 0)
@@ -115,16 +157,51 @@ public sealed class Order : AggregateRoot
         _lines.RemoveAt(index);
     }
 
+    /// <summary>
+    /// Records that an SMT line has accepted the order. An order can be downloaded more than
+    /// once, for example when the line needs the job again; <see cref="DownloadedAt"/> then
+    /// holds the time of the most recent download.
+    /// </summary>
+    public void MarkDownloaded(DateTimeOffset downloadedAt)
+    {
+        DownloadedAt = ValidateTimestamp(downloadedAt, nameof(DownloadedAt));
+        Status = OrderStatus.Downloaded;
+    }
+
+    private void EnsureEditable()
+    {
+        if (!IsEditable)
+        {
+            throw new DomainException($"Order '{Name}' has been downloaded and can no longer be changed.");
+        }
+    }
+
     private int IndexOf(Guid boardId) => _lines.FindIndex(line => line.BoardId == boardId);
 
-    private static DateTimeOffset ValidateOrderDate(DateTimeOffset orderDate)
+    private static DateTimeOffset ValidateTimestamp(DateTimeOffset value, string name)
     {
-        if (orderDate == default)
+        if (value == default)
         {
-            throw new DomainException("OrderDate must be set.");
+            throw new DomainException($"{name} must be set.");
         }
 
-        return orderDate;
+        return value;
+    }
+
+    private static (OrderStatus Status, DateTimeOffset? DownloadedAt) ValidateStatus(
+        OrderStatus status,
+        DateTimeOffset? downloadedAt)
+    {
+        return status switch
+        {
+            OrderStatus.Draft when downloadedAt is not null =>
+                throw new DomainException("A draft order must not have a download time."),
+            OrderStatus.Draft => (status, null),
+            OrderStatus.Downloaded when downloadedAt is null =>
+                throw new DomainException("A downloaded order must have a download time."),
+            OrderStatus.Downloaded => (status, ValidateTimestamp(downloadedAt.Value, nameof(DownloadedAt))),
+            _ => throw new DomainException($"Unknown order status: {status}."),
+        };
     }
 
     private static List<OrderLine> ValidateLines(IEnumerable<OrderLine> lines)

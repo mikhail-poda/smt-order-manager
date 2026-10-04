@@ -102,7 +102,7 @@ public sealed class OrderTests
         var id = Guid.NewGuid();
         var line = Line();
 
-        var order = Order.Restore(id, "Week 41", "Restored", IssuedAt, [line]);
+        var order = Order.Restore(id, "Week 41", "Restored", IssuedAt, [line], OrderStatus.Draft, null);
 
         Assert.Equal(id, order.Id);
         Assert.Equal("Week 41", order.Name);
@@ -113,7 +113,8 @@ public sealed class OrderTests
     [Fact]
     public void Restore_WithoutLines_ThrowsDomainException()
     {
-        Assert.Throws<DomainException>(() => Order.Restore(Guid.NewGuid(), "Week 41", null, IssuedAt, []));
+        Assert.Throws<DomainException>(
+            () => Order.Restore(Guid.NewGuid(), "Week 41", null, IssuedAt, [], OrderStatus.Draft, null));
     }
 
     [Fact]
@@ -222,6 +223,145 @@ public sealed class OrderTests
         var order = Order.Create("Week 41", null, IssuedAt, [Line(), Line()]);
 
         Assert.Throws<DomainException>(() => order.RemoveLine(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public void Create_SetsStatusToDraft()
+    {
+        var order = Order.Create("Week 41", null, IssuedAt, [Line()]);
+
+        Assert.Equal(OrderStatus.Draft, order.Status);
+        Assert.Null(order.DownloadedAt);
+        Assert.True(order.IsEditable);
+    }
+
+    [Fact]
+    public void MarkDownloaded_OnDraftOrder_SetsStatusAndDownloadTime()
+    {
+        var order = Order.Create("Week 41", null, IssuedAt, [Line()]);
+        var downloadedAt = IssuedAt.AddHours(2);
+
+        order.MarkDownloaded(downloadedAt);
+
+        Assert.Equal(OrderStatus.Downloaded, order.Status);
+        Assert.Equal(downloadedAt, order.DownloadedAt);
+        Assert.False(order.IsEditable);
+    }
+
+    [Fact]
+    public void MarkDownloaded_OnDownloadedOrder_RecordsMostRecentDownloadTime()
+    {
+        var order = Order.Create("Week 41", null, IssuedAt, [Line()]);
+        order.MarkDownloaded(IssuedAt.AddHours(2));
+        var secondDownload = IssuedAt.AddDays(1);
+
+        order.MarkDownloaded(secondDownload);
+
+        Assert.Equal(OrderStatus.Downloaded, order.Status);
+        Assert.Equal(secondDownload, order.DownloadedAt);
+    }
+
+    [Fact]
+    public void MarkDownloaded_WithDefaultTime_ThrowsAndKeepsDraft()
+    {
+        var order = Order.Create("Week 41", null, IssuedAt, [Line()]);
+
+        var exception = Assert.Throws<DomainException>(() => order.MarkDownloaded(default));
+
+        Assert.Equal("DownloadedAt must be set.", exception.Message);
+        Assert.Equal(OrderStatus.Draft, order.Status);
+        Assert.Null(order.DownloadedAt);
+    }
+
+    [Theory]
+    [InlineData(nameof(Order.Rename))]
+    [InlineData(nameof(Order.ChangeDescription))]
+    [InlineData(nameof(Order.ChangeOrderDate))]
+    [InlineData(nameof(Order.SetLine))]
+    [InlineData(nameof(Order.RemoveLine))]
+    public void EditingMethod_OnDownloadedOrder_ThrowsDomainException(string method)
+    {
+        var first = Line();
+        var order = Order.Create("Week 41", null, IssuedAt, [first, Line()]);
+        order.MarkDownloaded(IssuedAt.AddHours(2));
+
+        var exception = Assert.Throws<DomainException>(() => Edit(order, method, first.BoardId));
+
+        Assert.Equal("Order 'Week 41' has been downloaded and can no longer be changed.", exception.Message);
+    }
+
+    [Fact]
+    public void SetLine_OnDownloadedOrder_KeepsLines()
+    {
+        var line = Line(500);
+        var order = Order.Create("Week 41", null, IssuedAt, [line]);
+        order.MarkDownloaded(IssuedAt.AddHours(2));
+
+        Assert.Throws<DomainException>(() => order.SetLine(line.BoardId, 750));
+
+        Assert.Equal([line], order.Lines);
+    }
+
+    [Fact]
+    public void Restore_WithDownloadedStatus_KeepsStatusAndBlocksEdits()
+    {
+        var downloadedAt = IssuedAt.AddHours(2);
+
+        var order = Order.Restore(
+            Guid.NewGuid(), "Week 41", null, IssuedAt, [Line()], OrderStatus.Downloaded, downloadedAt);
+
+        Assert.Equal(OrderStatus.Downloaded, order.Status);
+        Assert.Equal(downloadedAt, order.DownloadedAt);
+        Assert.Throws<DomainException>(() => order.Rename("Week 42"));
+    }
+
+    [Fact]
+    public void Restore_WithDownloadedStatusWithoutDownloadTime_ThrowsDomainException()
+    {
+        var exception = Assert.Throws<DomainException>(() => Order.Restore(
+            Guid.NewGuid(), "Week 41", null, IssuedAt, [Line()], OrderStatus.Downloaded, null));
+
+        Assert.Equal("A downloaded order must have a download time.", exception.Message);
+    }
+
+    [Fact]
+    public void Restore_WithDraftStatusAndDownloadTime_ThrowsDomainException()
+    {
+        var exception = Assert.Throws<DomainException>(() => Order.Restore(
+            Guid.NewGuid(), "Week 41", null, IssuedAt, [Line()], OrderStatus.Draft, IssuedAt.AddHours(2)));
+
+        Assert.Equal("A draft order must not have a download time.", exception.Message);
+    }
+
+    [Fact]
+    public void Restore_WithUndefinedStatus_ThrowsDomainException()
+    {
+        Assert.Throws<DomainException>(() => Order.Restore(
+            Guid.NewGuid(), "Week 41", null, IssuedAt, [Line()], (OrderStatus)99, null));
+    }
+
+    private static void Edit(Order order, string method, Guid existingBoardId)
+    {
+        switch (method)
+        {
+            case nameof(Order.Rename):
+                order.Rename("Week 42");
+                break;
+            case nameof(Order.ChangeDescription):
+                order.ChangeDescription("Changed");
+                break;
+            case nameof(Order.ChangeOrderDate):
+                order.ChangeOrderDate(IssuedAt.AddDays(1));
+                break;
+            case nameof(Order.SetLine):
+                order.SetLine(existingBoardId, 750);
+                break;
+            case nameof(Order.RemoveLine):
+                order.RemoveLine(existingBoardId);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(method), method, "Unknown editing method.");
+        }
     }
 
     private static OrderLine Line(int quantity = 1) => new(Guid.NewGuid(), quantity);
