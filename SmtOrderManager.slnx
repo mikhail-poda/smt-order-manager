@@ -6,6 +6,8 @@
     <Project Path="src/SmtOrderManager.Infrastructure/SmtOrderManager.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SmtOrderManager.Application.Tests/SmtOrderManager.Application.Tests.csproj" />
     <Project Path="tests/SmtOrderManager.Domain.Tests/SmtOrderManager.Domain.Tests.csproj" />
+    <Project Path="tests/SmtOrderManager.Infrastructure.Tests/SmtOrderManager.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
