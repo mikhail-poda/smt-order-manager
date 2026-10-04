@@ -15,22 +15,30 @@ namespace SmtOrderManager.Application.Boards;
 /// <remarks>
 /// Rules that need other aggregates are checked here, because a board cannot see components:
 /// every referenced component must exist. Violations name components instead of showing their
-/// identifiers where the component is known.
+/// identifiers where the component is known. A board that is still used in an order cannot be
+/// removed; every such order is reported.
 /// </remarks>
 public sealed partial class BoardService
 {
     private readonly IBoardRepository _boards;
     private readonly IComponentRepository _components;
+    private readonly IOrderRepository _orders;
     private readonly ILogger<BoardService> _logger;
 
-    public BoardService(IBoardRepository boards, IComponentRepository components, ILogger<BoardService> logger)
+    public BoardService(
+        IBoardRepository boards,
+        IComponentRepository components,
+        IOrderRepository orders,
+        ILogger<BoardService> logger)
     {
         ArgumentNullException.ThrowIfNull(boards);
         ArgumentNullException.ThrowIfNull(components);
+        ArgumentNullException.ThrowIfNull(orders);
         ArgumentNullException.ThrowIfNull(logger);
 
         _boards = boards;
         _components = components;
+        _orders = orders;
         _logger = logger;
     }
 
@@ -156,6 +164,10 @@ public sealed partial class BoardService
             .AsReadOnly();
     }
 
+    /// <summary>
+    /// Removes boards that no order uses. If any board in the batch is unknown or still used,
+    /// nothing is removed.
+    /// </summary>
     /// <returns>The number of removed boards.</returns>
     public async Task<OperationResult<int>> RemoveAsync(
         IReadOnlyCollection<Guid> ids,
@@ -170,6 +182,21 @@ public sealed partial class BoardService
         foreach (var id in distinctIds.Where(id => !existing.ContainsKey(id)))
         {
             violations.Add(Target(id, existing), "Board not found.");
+        }
+
+        var orders = await _orders.FindOrdersUsingBoardsAsync(existing.Keys, cancellationToken);
+
+        foreach (var id in distinctIds.Where(existing.ContainsKey))
+        {
+            var usages = orders
+                .Where(order => order.Lines.Any(line => line.BoardId == id))
+                .Select(order => order.Name)
+                .Order(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var orderName in usages)
+            {
+                violations.Add(Target(id, existing), $"Board is used by order '{orderName}'.");
+            }
         }
 
         if (violations.HasViolations)

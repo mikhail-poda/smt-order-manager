@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SmtOrderManager.Application.Common;
 using SmtOrderManager.Application.Components;
 using SmtOrderManager.Application.Tests.Fakes;
+using SmtOrderManager.Domain.Boards;
 using SmtOrderManager.Domain.Components;
 
 namespace SmtOrderManager.Application.Tests.Components;
@@ -9,16 +10,15 @@ namespace SmtOrderManager.Application.Tests.Components;
 public sealed class ComponentServiceTests
 {
     private readonly InMemoryComponentRepository _repository = new();
+    private readonly InMemoryBoardRepository _boards = new();
     private readonly ComponentService _service;
 
     public ComponentServiceTests()
     {
-        _service = new ComponentService(_repository, NullLogger<ComponentService>.Instance);
+        _service = new ComponentService(_repository, _boards, NullLogger<ComponentService>.Instance);
     }
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
-
-    private static readonly string[] Expected = ["RES-10K-0402", "CAP-100N-0402"];
 
     [Fact]
     public async Task CreateAsync_WithValidBatch_SavesAllAndReturnsDetails()
@@ -28,7 +28,7 @@ public sealed class ComponentServiceTests
             Token);
 
         Assert.True(result.Succeeded);
-        Assert.Equal(Expected, result.Value.Select(details => details.Name));
+        Assert.Equal(["RES-10K-0402", "CAP-100N-0402"], result.Value.Select(details => details.Name));
         Assert.Equal(2, _repository.Count);
 
         var stored = await _repository.GetByIdAsync(result.Value[0].Id, Token);
@@ -164,5 +164,28 @@ public sealed class ComponentServiceTests
 
         Assert.Equal([new Violation($"Component {unknownId}", "Component not found.")], result.Violations);
         Assert.Equal(1, _repository.Count);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_WithComponentUsedByBoards_RemovesNothingAndReportsEveryBoard()
+    {
+        var resistor = Component.Create("RES-10K-0402", null);
+        var capacitor = Component.Create("CAP-100N-0402", null);
+        var unused = Component.Create("LED-RED-0603", null);
+        _repository.Seed(resistor, capacitor, unused);
+        _boards.Seed(
+            Board.Create("Sensor board", null, 50m, 30m, [new BomEntry(resistor.Id, 3)]),
+            Board.Create("Controller board", null, 160m, 100m, [new BomEntry(resistor.Id, 12), new BomEntry(capacitor.Id, 4)]));
+
+        var result = await _service.RemoveAsync([unused.Id, resistor.Id, capacitor.Id], Token);
+
+        Assert.Equal(
+            [
+                new Violation("Component 'RES-10K-0402'", "Component is used by board 'Controller board'."),
+                new Violation("Component 'RES-10K-0402'", "Component is used by board 'Sensor board'."),
+                new Violation("Component 'CAP-100N-0402'", "Component is used by board 'Controller board'.")
+            ],
+            result.Violations);
+        Assert.Equal(3, _repository.Count);
     }
 }

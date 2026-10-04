@@ -4,6 +4,7 @@ using SmtOrderManager.Application.Common;
 using SmtOrderManager.Application.Tests.Fakes;
 using SmtOrderManager.Domain.Boards;
 using SmtOrderManager.Domain.Components;
+using SmtOrderManager.Domain.Orders;
 
 namespace SmtOrderManager.Application.Tests.Boards;
 
@@ -11,6 +12,7 @@ public sealed class BoardServiceTests
 {
     private readonly InMemoryBoardRepository _boards = new();
     private readonly InMemoryComponentRepository _components = new();
+    private readonly InMemoryOrderRepository _orders = new();
     private readonly Component _resistor = Component.Create("RES-10K-0402", null);
     private readonly Component _capacitor = Component.Create("CAP-100N-0402", null);
     private readonly Component _led = Component.Create("LED-RED-0603", null);
@@ -19,7 +21,7 @@ public sealed class BoardServiceTests
     public BoardServiceTests()
     {
         _components.Seed(_resistor, _capacitor, _led);
-        _service = new BoardService(_boards, _components, NullLogger<BoardService>.Instance);
+        _service = new BoardService(_boards, _components, _orders, NullLogger<BoardService>.Instance);
     }
 
     private static CancellationToken Token => TestContext.Current.CancellationToken;
@@ -201,5 +203,29 @@ public sealed class BoardServiceTests
 
         Assert.Equal([new Violation($"Board {unknownId}", "Board not found.")], result.Violations);
         Assert.Equal(1, _boards.Count);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_WithBoardUsedByOrders_RemovesNothingAndReportsEveryOrder()
+    {
+        var issuedAt = new DateTimeOffset(2026, 10, 5, 8, 30, 0, TimeSpan.FromHours(2));
+        var controller = Board.Create("Controller board", null, 160m, 100m, [new BomEntry(_resistor.Id, 12)]);
+        var unused = Board.Create("Sensor board", null, 50m, 30m, [new BomEntry(_resistor.Id, 3)]);
+        _boards.Seed(controller, unused);
+        var downloaded = Order.Create("Week 40", null, issuedAt, [new OrderLine(controller.Id, 100)]);
+        downloaded.MarkDownloaded(issuedAt.AddHours(2));
+        _orders.Seed(
+            Order.Create("Week 41", null, issuedAt, [new OrderLine(controller.Id, 500)]),
+            downloaded);
+
+        var result = await _service.RemoveAsync([unused.Id, controller.Id], Token);
+
+        Assert.Equal(
+            [
+                new Violation("Board 'Controller board'", "Board is used by order 'Week 40'."),
+                new Violation("Board 'Controller board'", "Board is used by order 'Week 41'.")
+            ],
+            result.Violations);
+        Assert.Equal(2, _boards.Count);
     }
 }

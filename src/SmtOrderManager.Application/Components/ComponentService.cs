@@ -12,17 +12,27 @@ namespace SmtOrderManager.Application.Components;
 /// a batch is saved only if every item is valid, otherwise all violations are returned and
 /// nothing is changed.
 /// </summary>
+/// <remarks>
+/// A component that is still used in a bill of materials cannot be removed. The rule spans
+/// aggregates, so this service enforces it and reports every board that uses the component.
+/// </remarks>
 public sealed partial class ComponentService
 {
     private readonly IComponentRepository _components;
+    private readonly IBoardRepository _boards;
     private readonly ILogger<ComponentService> _logger;
 
-    public ComponentService(IComponentRepository components, ILogger<ComponentService> logger)
+    public ComponentService(
+        IComponentRepository components,
+        IBoardRepository boards,
+        ILogger<ComponentService> logger)
     {
         ArgumentNullException.ThrowIfNull(components);
+        ArgumentNullException.ThrowIfNull(boards);
         ArgumentNullException.ThrowIfNull(logger);
 
         _components = components;
+        _boards = boards;
         _logger = logger;
     }
 
@@ -128,6 +138,10 @@ public sealed partial class ComponentService
             .AsReadOnly();
     }
 
+    /// <summary>
+    /// Removes components that no board uses. If any component in the batch is unknown or still
+    /// used, nothing is removed.
+    /// </summary>
     /// <returns>The number of removed components.</returns>
     public async Task<OperationResult<int>> RemoveAsync(
         IReadOnlyCollection<Guid> ids,
@@ -142,6 +156,21 @@ public sealed partial class ComponentService
         foreach (var id in distinctIds.Where(id => !existing.ContainsKey(id)))
         {
             violations.Add(Target(id, existing), "Component not found.");
+        }
+
+        var boards = await _boards.FindBoardsUsingComponentsAsync(existing.Keys, cancellationToken);
+
+        foreach (var id in distinctIds.Where(existing.ContainsKey))
+        {
+            var usages = boards
+                .Where(board => board.BillOfMaterials.Any(entry => entry.ComponentId == id))
+                .Select(board => board.Name)
+                .Order(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var boardName in usages)
+            {
+                violations.Add(Target(id, existing), $"Component is used by board '{boardName}'.");
+            }
         }
 
         if (violations.HasViolations)
