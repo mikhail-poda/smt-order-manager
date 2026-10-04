@@ -30,7 +30,7 @@ public sealed partial class ComponentService
         IReadOnlyCollection<CreateComponentCommand> commands,
         CancellationToken cancellationToken = default)
     {
-        EnsureNotEmpty(commands);
+        Batch.EnsureNotEmpty(commands);
 
         var violations = new ViolationCollector();
         var created = new List<Component>();
@@ -64,15 +64,11 @@ public sealed partial class ComponentService
         IReadOnlyCollection<UpdateComponentCommand> commands,
         CancellationToken cancellationToken = default)
     {
-        EnsureNotEmpty(commands);
+        Batch.EnsureNotEmpty(commands);
 
         var violations = new ViolationCollector();
         var existing = await LoadAsync(commands.Select(command => command.Id), cancellationToken);
-        var duplicateIds = commands
-            .GroupBy(command => command.Id)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToHashSet();
+        var duplicateIds = Batch.FindDuplicates(commands, command => command.Id);
 
         foreach (var id in duplicateIds)
         {
@@ -137,7 +133,7 @@ public sealed partial class ComponentService
         IReadOnlyCollection<Guid> ids,
         CancellationToken cancellationToken = default)
     {
-        EnsureNotEmpty(ids);
+        Batch.EnsureNotEmpty(ids);
 
         var distinctIds = ids.Distinct().ToList();
         var violations = new ViolationCollector();
@@ -197,16 +193,6 @@ public sealed partial class ComponentService
     private static OperationResult<IReadOnlyList<ComponentDetails>> Success(List<Component> components) =>
         OperationResult.Success<IReadOnlyList<ComponentDetails>>(
             components.ConvertAll(ComponentDetails.From).AsReadOnly());
-
-    private static void EnsureNotEmpty<T>(IReadOnlyCollection<T> items)
-    {
-        ArgumentNullException.ThrowIfNull(items);
-
-        if (items.Count == 0)
-        {
-            throw new ArgumentException("A batch must contain at least one item.", nameof(items));
-        }
-    }
 
     [LoggerMessage(
         Level = LogLevel.Information,
