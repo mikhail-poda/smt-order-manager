@@ -43,7 +43,8 @@ ScaffoldingReadMe.txt
 ~$*
 *~
 CodeCoverage/
-.idea
+.idea/
+.cursor
 
 # MSBuild Binary and Structured Log
 *.binlog
@@ -57,4 +58,7 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
+rules/coding-challenge.mdc
 docs/coding-challenge.md
+docs/presentation-briefing.de.md
+docs/presentation-briefing.en.md

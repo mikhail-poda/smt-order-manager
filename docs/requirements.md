@@ -6,6 +6,14 @@ This project was built as a technical exercise. This document summarizes the ori
 
 The task is framed as a sprint in an agile team: develop a robust, platform-independent C# application for managing orders in a surface-mount technology (SMT) manufacturing environment, and present the result to the team at the end of the sprint, including an outline of the modelled classes and the architecture.
 
+### Product context
+
+SMT shop-floor software is typically sold together with the production equipment and delivered as a suite of applications, each covering one workflow: programming, production planning, material logistics, setup preparation, line operations, monitoring, process optimization and system integration. The applications are usually developed by separate teams, but they exchange data along the production flow, from product data and production orders down to the machines on the line.
+
+This application is modelled as one module in such a suite. It covers product data and production orders and hands orders over to the line, so it sits at the start of that flow.
+
+In a suite like this, a new feature often has to travel through several applications before it reaches production. Adding a board property, for example, can affect product data, planning, setup preparation and the line itself. Coordinating such a change is a planning, timing and testing challenge as much as a technical one. The technical part of that challenge shapes several decisions in this project: the order download is treated as an explicit, versioned interface contract (see [design policies](#design-policies-and-extensions)), and the domain model is kept separate from the data exchanged with other applications (see the [bounded context](domain-model.md#bounded-context)).
+
 ## System scope
 
 The application is an **order management system for SMT production**. It works at the planning level, between business systems such as an enterprise resource planning (ERP) system and the production line:
@@ -16,7 +24,7 @@ flowchart LR
     OMS["SMT Order Manager<br/>(product data, production orders)"]
     Line["SMT line<br/>(production, traceability)"]
     ERP -. "not in scope" .-> OMS
-    OMS -- "order download" --> Line
+    OMS -- "order download<br/>(versioned JSON contract)" --> Line
 ```
 
 **In scope**
@@ -33,6 +41,15 @@ flowchart LR
 - Production execution and traceability of individual produced boards
 
 The boundary follows the chosen interpretation of the brief: boards and components are treated as reusable master data, while orders represent production jobs. Physical boards with their own serial numbers come into existence on the production side and are outside this exercise. See the [domain model](domain-model.md) for details.
+
+## Quality goals
+
+| Priority | Quality goal | Motivation |
+|---|---|---|
+| 1 | Interoperability | Orders are handed over to other applications, so the exchanged data must be well defined and stable. |
+| 2 | Evolvability | Features travel through several applications that are released on different schedules. Changes must be possible without breaking consumers. |
+| 3 | Testability | Domain rules and the download contract must be verifiable automatically, independent of storage and of the line. |
+| 4 | Portability | The application must run on every platform supported by .NET. |
 
 ## Domain
 
@@ -126,5 +143,6 @@ The detailed reasoning is described in the [domain model](domain-model.md).
 - **Aggregates.** `Order`, `Board` and `Component` are aggregate roots. `OrderLine` and `BomEntry` are value objects inside the `Order` and `Board` aggregates and have no independent lifecycle. Aggregates reference each other by identifier only, and each aggregate root has its own repository.
 - **Deletion.** Referenced boards and components cannot be deleted; the application reports where they are still used. This is a chosen referential-integrity policy.
 - **Batch atomicity.** A batch operation is validated as a whole. If any entity in the batch violates a rule, for example a referenced component in a batch removal, the entire batch is rejected and the violations are reported.
+- **Versioned download contract.** The order-download payload is a published interface, not a serialized copy of the domain model. It carries an explicit schema version. Within a version, changes are additive only, and consumers are expected to ignore fields they do not know. Breaking changes require a new schema version. Contract tests pin the payload format, so an unintended change fails the build.
 - **Order download enhancement.** The simulated production payload may include calculated total component demand. This is an extension, not an explicit challenge requirement.
 - **Persistence evolution.** Phase 1 uses JSON files. Phase 2 adds SQLite repositories as the default, keeps JSON-file repositories selectable, and does not change the domain model.

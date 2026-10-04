@@ -3,7 +3,7 @@
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-A cross-platform .NET order management system for SMT (Surface-Mount Technology) production. It maintains the component library and board designs, manages production orders, and simulates downloading an order to a production line. See the [system scope](docs/requirements.md#system-scope) for what is and isn't covered.
+A cross-platform .NET order management system for SMT (Surface-Mount Technology) production. It maintains the component library and board designs, manages production orders, and simulates downloading an order to a production line. It is modelled as one module of an SMT shop-floor software suite, at the start of the flow from product data to the production line. See the [system scope](docs/requirements.md#system-scope) for what is and isn't covered.
 
 > **Status:** early development. Implementation progress is tracked in [docs/requirements.md](docs/requirements.md).
 

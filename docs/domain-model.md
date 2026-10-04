@@ -27,7 +27,7 @@ The terms below are used with exactly these meanings in the documentation, in co
 | Order date | The date on which the order was issued. |
 | SMT line | A production line that assembles boards using surface-mount technology. In this application the line is simulated. |
 | Order download | Handing an order over to an SMT line for production. |
-| Download payload | The data sent to the SMT line during an order download: the order, the boards it references and the total component demand. |
+| Download payload | The data sent to the SMT line during an order download: the order, the boards it references and the total component demand. Its format is versioned and independent of the internal domain model. |
 | Total component demand | For one order, the total number of placements required per component across all ordered boards. |
 
 ### Abbreviations
@@ -44,7 +44,16 @@ The terms below are used with exactly these meanings in the documentation, in co
 
 The application forms a single bounded context: **production order management**. Its language is the one defined above.
 
-Neighbouring systems have their own models and their own meaning of shared words. In an ERP system, for example, "order" usually means a customer order, and on the SMT line a "board" is a physical board with a serial number. Such meanings are deliberately not part of this context. The SMT line receives only the download payload, so its internal model does not leak into this one.
+Neighbouring systems have their own models and their own meaning of shared words. In an ERP system, for example, "order" usually means a customer order, and on the SMT line a "board" is a physical board with a serial number. Such meanings are deliberately not part of this context.
+
+The relationships to the neighbouring contexts are:
+
+| Neighbour | Relationship | Notes |
+|---|---|---|
+| ERP | Upstream, not integrated | Customer orders and inventory are out of scope. Production orders are created in this application. |
+| SMT line | Downstream | Receives orders through the download payload. |
+
+Toward the SMT line, this context offers its data in a **published language**: the download payload is a documented, versioned format that is mapped from the domain model rather than being the domain model itself. The domain model can therefore change, for example by gaining a new property on `Board`, without breaking the line, and the line's own model does not leak into this context. When downstream applications are developed by other teams and released on their own schedules, this separation is what allows a feature to be rolled out one application at a time.
 
 ## Master data and production orders
 
