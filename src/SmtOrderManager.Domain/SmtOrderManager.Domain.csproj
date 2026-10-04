@@ -3,4 +3,12 @@
   <PropertyGroup>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Folder Include="Common\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmtOrderManager.Domain.Tests" />
+  </ItemGroup>
+
 </Project>
