@@ -24,10 +24,12 @@ The terms below are used with exactly these meanings in the documentation, in co
 | Master data | Components and boards: reusable data that describes what can be built. Master data is maintained independently of production orders. |
 | Order | A production order: a production job that states which boards to build and how many of each. "Order" always means a production order, never a customer order. |
 | Order line | One board in an order, with the number of boards to produce. |
-| Order date | The date on which the order was issued. |
+| Order date | The point in time at which the order was issued, stored with its offset from UTC. |
+| Order status | The lifecycle state of an order: *draft* while it is being prepared and can be edited, *downloaded* once an SMT line has accepted it. |
 | SMT line | A production line that assembles boards using surface-mount technology. In this application the line is simulated. |
 | Order download | Handing an order over to an SMT line for production. |
 | Download payload | The data sent to the SMT line during an order download: the order, the boards it references and the total component demand. Its format is versioned and independent of the internal domain model. |
+| Download result | The SMT line's answer to an order download: accepted, or rejected with the reasons. |
 | Total component demand | For one order, the total number of placements required per component across all ordered boards. |
 
 ### Abbreviations
@@ -76,7 +78,14 @@ classDiagram
             Guid Id
             string Name
             string Description
-            DateTime OrderDate
+            DateTimeOffset OrderDate
+            OrderStatus Status
+            DateTimeOffset? DownloadedAt
+        }
+        class OrderStatus {
+            <<enumeration>>
+            Draft
+            Downloaded
         }
         class OrderLine {
             <<value object>>
@@ -111,6 +120,7 @@ classDiagram
     }
 
     Order "1" *-- "1..*" OrderLine : contains
+    Order --> OrderStatus : has
     OrderLine "0..*" --> "1" Board : references by Id
     Board "1" *-- "1..*" BomEntry : contains
     BomEntry "0..*" --> "1" Component : references by Id
@@ -120,7 +130,7 @@ The diagram uses UML notation. A filled diamond marks composition: an object is 
 
 | Aggregate | Aggregate root | Contains | References | Represents in the requirements |
 |---|---|---|---|---|
-| Order | `Order` | `OrderLine` value objects | Boards, by `BoardId` | Order; Order–Board relationship |
+| Order | `Order` | `OrderLine` value objects, `OrderStatus` | Boards, by `BoardId` | Order; Order–Board relationship |
 | Board | `Board` | `BomEntry` value objects | Components, by `ComponentId` | Board; Board–Component relationship |
 | Component | `Component` | (nothing) | (nothing) | Component |
 
@@ -206,7 +216,23 @@ The same rule applies to batch removal: a batch is validated as a whole, and if 
 
 Because this rule spans aggregates, it is enforced by the application services, not by an aggregate root.
 
+A downloaded order cannot be removed either, for the reason described in [Order status](#order-status).
+
 This is an implementation policy, not a requirement imposed by the original challenge.
+
+### Order status
+
+Every order starts as a **draft**. It becomes **downloaded** when an SMT line accepts it, and the time of acceptance is recorded.
+
+A downloaded order can no longer be edited or removed. Changing a production job that is already on the line is risky in practice: the line would produce something other than what the system shows. The `Order` aggregate root enforces the edit rule itself; removal is not an operation of the aggregate, so the application services enforce the removal rule.
+
+A downloaded order can be downloaded again, for example when the line needs the job a second time. A rejected or failed download leaves the order a draft, so it can be corrected and downloaded again.
+
+This is a design decision, not a requirement of the challenge.
+
+### Order date
+
+The order date is a point in time with its offset from UTC (`DateTimeOffset`), as is the time of download. This keeps timestamps unambiguous across time zones.
 
 ### Dimensions
 
@@ -217,6 +243,10 @@ Board length and width are interpreted as millimetres.
 The required "download of an order" is modelled as sending a download payload to a simulated SMT line.
 
 The minimum payload contains the order and the referenced boards. As a small domain enhancement, the download also contains the **total component demand** for that order, calculated by the domain service described above.
+
+The line answers with a download result. Only an accepted download changes the order status to downloaded (see [Order status](#order-status)).
+
+Whether a line can produce a board, for example because of the board's dimensions, is a capability of that line and not a rule of this domain. A board of any positive size is valid master data; the line decides whether it can handle it. The checks of the simulated line are described in the [architecture](architecture.md#simulated-smt-line).
 
 For each component, calculate its required quantity separately:
 
