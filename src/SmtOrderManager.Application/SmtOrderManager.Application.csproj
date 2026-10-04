@@ -4,6 +4,10 @@
     <ProjectReference Include="..\SmtOrderManager.Domain\SmtOrderManager.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
   <PropertyGroup>
   </PropertyGroup>
 
