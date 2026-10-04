@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-06T06:00:00+02:00",
+  "order": {
+    "id": "0a000000-0000-0000-0000-000000000001",
+    "name": "Week 41",
+    "description": "Controller and sensor boards",
+    "orderDate": "2026-10-05T08:30:00+02:00",
+    "lines": [
+      {
+        "boardId": "0b000000-0000-0000-0000-000000000001",
+        "quantity": 500
+      },
+      {
+        "boardId": "0b000000-0000-0000-0000-000000000002",
+        "quantity": 200
+      }
+    ]
+  },
+  "boards": [
+    {
+      "id": "0b000000-0000-0000-0000-000000000001",
+      "name": "Controller board",
+      "description": "Main controller",
+      "lengthMm": 160,
+      "widthMm": 100,
+      "billOfMaterials": [
+        {
+          "componentId": "0c000000-0000-0000-0000-000000000001",
+          "componentName": "RES-10K-0402",
+          "quantity": 12
+        },
+        {
+          "componentId": "0c000000-0000-0000-0000-000000000002",
+          "componentName": "CAP-100N-0402",
+          "quantity": 4
+        }
+      ]
+    },
+    {
+      "id": "0b000000-0000-0000-0000-000000000002",
+      "name": "Sensor board",
+      "description": "",
+      "lengthMm": 50.8,
+      "widthMm": 30.5,
+      "billOfMaterials": [
+        {
+          "componentId": "0c000000-0000-0000-0000-000000000001",
+          "componentName": "RES-10K-0402",
+          "quantity": 3
+        },
+        {
+          "componentId": "0c000000-0000-0000-0000-000000000003",
+          "componentName": "LED-RED-0603",
+          "quantity": 2
+        }
+      ]
+    }
+  ],
+  "componentDemand": [
+    {
+      "componentId": "0c000000-0000-0000-0000-000000000001",
+      "componentName": "RES-10K-0402",
+      "totalQuantity": 6600
+    },
+    {
+      "componentId": "0c000000-0000-0000-0000-000000000002",
+      "componentName": "CAP-100N-0402",
+      "totalQuantity": 2000
+    },
+    {
+      "componentId": "0c000000-0000-0000-0000-000000000003",
+      "componentName": "LED-RED-0603",
+      "totalQuantity": 400
+    }
+  ]
+}

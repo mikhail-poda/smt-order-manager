@@ -22,4 +22,8 @@
     <ProjectReference Include="..\..\src\SmtOrderManager.Application\SmtOrderManager.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Contracts\**\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
