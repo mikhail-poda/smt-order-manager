@@ -69,7 +69,295 @@ Each production project except the CLI has its own test project, so tests follow
 |---|---|
 | `SmtOrderManager.Domain.Tests` | Aggregates, value objects and the total component demand domain service |
 | `SmtOrderManager.Application.Tests` | Use cases against in-memory repository fakes and a fake SMT line, the payload mapping and the contract test of the download payload |
-| `SmtOrderManager.Infrastructure.Tests` | JSON file persistence round trips and the rules of the simulated SMT line |
+| `SmtOrderManager.Infrastructure.Tests` | JSON file persistence round trips, the rules of the simulated SMT line, checked against the approved example of the download payload, and the service registrations used by the CLI composition root |
+
+## Class outline
+
+The diagrams below show the main classes of each layer as implemented, with their public operations. Constructors, private members and the read models returned by the use cases (`ComponentDetails`, `BoardDetails`, `OrderDetails`) are left out for readability. Generic types are written with `~T~`.
+
+### Domain
+
+```mermaid
+classDiagram
+    direction TB
+
+    class AggregateRoot {
+        <<abstract>>
+        +Guid Id
+    }
+    class Component {
+        +string Name
+        +string Description
+        +Create(name, description)$
+        +Restore(id, name, description)$
+        +Rename(name)
+        +ChangeDescription(description)
+    }
+    class Board {
+        +string Name
+        +string Description
+        +decimal Length
+        +decimal Width
+        +IReadOnlyList~BomEntry~ BillOfMaterials
+        +Create(name, description, length, width, billOfMaterials)$
+        +Restore(id, name, description, length, width, billOfMaterials)$
+        +Rename(name)
+        +ChangeDescription(description)
+        +ChangeDimensions(length, width)
+        +SetBomEntry(componentId, quantity)
+        +RemoveBomEntry(componentId)
+    }
+    class BomEntry {
+        <<value object>>
+        +Guid ComponentId
+        +int Quantity
+    }
+    class Order {
+        +string Name
+        +string Description
+        +DateTimeOffset OrderDate
+        +IReadOnlyList~OrderLine~ Lines
+        +OrderStatus Status
+        +DateTimeOffset? DownloadedAt
+        +bool IsEditable
+        +Create(name, description, orderDate, lines)$
+        +Restore(id, name, description, orderDate, lines, status, downloadedAt)$
+        +Rename(name)
+        +ChangeDescription(description)
+        +ChangeOrderDate(orderDate)
+        +SetLine(boardId, quantity)
+        +RemoveLine(boardId)
+        +MarkDownloaded(downloadedAt)
+    }
+    class OrderLine {
+        <<value object>>
+        +Guid BoardId
+        +int Quantity
+    }
+    class OrderStatus {
+        <<enumeration>>
+        Draft
+        Downloaded
+    }
+    class ComponentDemandCalculator {
+        <<domain service>>
+        +Calculate(order, boards)$
+    }
+    class ComponentDemand {
+        <<value object>>
+        +Guid ComponentId
+        +long TotalQuantity
+    }
+    class DomainException {
+        <<exception>>
+    }
+
+    AggregateRoot <|-- Component
+    AggregateRoot <|-- Board
+    AggregateRoot <|-- Order
+    Board "1" *-- "1..*" BomEntry
+    Order "1" *-- "1..*" OrderLine
+    Order --> OrderStatus
+    ComponentDemandCalculator ..> Order : reads
+    ComponentDemandCalculator ..> Board : reads
+    ComponentDemandCalculator ..> ComponentDemand : creates
+```
+
+`Create` generates a new identifier, `Restore` rebuilds a persisted aggregate with its existing one. Both apply the same rules, so invalid stored data is detected when it is loaded. A broken rule throws `DomainException`.
+
+### Application
+
+```mermaid
+classDiagram
+    direction TB
+
+    class ComponentService {
+        +CreateAsync(commands) OperationResult
+        +UpdateAsync(commands) OperationResult
+        +SearchAsync(text) IReadOnlyList~ComponentDetails~
+        +RemoveAsync(ids) OperationResult
+    }
+    class BoardService {
+        +CreateAsync(commands) OperationResult
+        +UpdateAsync(commands) OperationResult
+        +SearchAsync(text) IReadOnlyList~BoardDetails~
+        +RemoveAsync(ids) OperationResult
+    }
+    class OrderService {
+        +CreateAsync(commands) OperationResult
+        +UpdateAsync(commands) OperationResult
+        +SearchAsync(text) IReadOnlyList~OrderDetails~
+        +RemoveAsync(ids) OperationResult
+    }
+    class OrderDownloadService {
+        +DownloadAsync(orderId) OperationResult
+    }
+    class OperationResult~T~ {
+        +bool Succeeded
+        +T Value
+        +IReadOnlyList~Violation~ Violations
+    }
+    class Violation {
+        +string Target
+        +string Message
+    }
+    class IRepository~TAggregate~ {
+        <<interface>>
+        +GetByIdAsync(id)
+        +GetByIdsAsync(ids)
+        +SearchAsync(text)
+        +SaveAsync(aggregates)
+        +RemoveAsync(ids)
+    }
+    class IComponentRepository {
+        <<interface>>
+    }
+    class IBoardRepository {
+        <<interface>>
+        +FindBoardsUsingComponentsAsync(componentIds)
+    }
+    class IOrderRepository {
+        <<interface>>
+        +FindOrdersUsingBoardsAsync(boardIds)
+    }
+    class ISmtLine {
+        <<interface>>
+        +DownloadAsync(payloadJson) LineDownloadResult
+    }
+    class LineDownloadResult {
+        +bool Accepted
+        +string LineId
+        +DateTimeOffset ReceivedAt
+        +IReadOnlyList~string~ Reasons
+        +string? JobReference
+    }
+    class OrderDownloadPayloadMapper {
+        +Map(order, boards, components, demand, generatedAt)$
+    }
+    class DownloadPayloadSerializer {
+        +Serialize(payload)$
+    }
+    class OrderDownloadPayload {
+        +int SchemaVersion
+        +DateTimeOffset GeneratedAt
+        +OrderPayload Order
+        +IReadOnlyList~BoardPayload~ Boards
+        +IReadOnlyList~ComponentDemandPayload~ ComponentDemand
+    }
+
+    IRepository <|-- IComponentRepository
+    IRepository <|-- IBoardRepository
+    IRepository <|-- IOrderRepository
+    OperationResult o-- Violation
+    ComponentService --> IComponentRepository
+    ComponentService --> IBoardRepository : restricted deletion
+    BoardService --> IBoardRepository
+    BoardService --> IComponentRepository : referenced components
+    BoardService --> IOrderRepository : restricted deletion
+    OrderService --> IOrderRepository
+    OrderService --> IBoardRepository : referenced boards
+    OrderDownloadService --> IOrderRepository
+    OrderDownloadService --> ISmtLine
+    OrderDownloadService ..> OrderDownloadPayloadMapper
+    OrderDownloadService ..> DownloadPayloadSerializer
+    OrderDownloadPayloadMapper ..> OrderDownloadPayload
+    ISmtLine ..> LineDownloadResult
+```
+
+Each create, update and remove operation takes a batch and either applies all of it or returns the violations of every item. `OrderDownloadService` also reads boards and components and uses `ComponentDemandCalculator`; those dependencies are left out of the diagram.
+
+### Infrastructure and console application
+
+```mermaid
+classDiagram
+    direction TB
+
+    class JsonFileStore~TDocument~ {
+        +string FilePath
+        +LoadAsync()
+        +UpdateAsync(change)
+        +Dispose()
+    }
+    class JsonRepository~TAggregate~ {
+        <<abstract>>
+        #ToDocument(aggregate)*
+        #ToAggregate(document)*
+        #SearchableTexts(document)*
+    }
+    class JsonComponentRepository
+    class JsonBoardRepository
+    class JsonOrderRepository
+    class SimulatedSmtLine {
+        +DownloadAsync(payloadJson) LineDownloadResult
+    }
+    class LineJob {
+        <<reader type>>
+        +int SchemaVersion
+        +LineJobOrder Order
+        +IReadOnlyList~LineJobBoard~ Boards
+    }
+    class JsonStorageOptions {
+        +string DataDirectory
+    }
+    class SimulatedSmtLineOptions {
+        +string LineId
+        +string InboxDirectory
+        +int[] SupportedSchemaVersions
+        +decimal MaxBoardLength
+        +decimal MaxBoardWidth
+        +bool IsAvailable
+    }
+    class IComponentRepository {
+        <<interface>>
+    }
+    class IBoardRepository {
+        <<interface>>
+    }
+    class IOrderRepository {
+        <<interface>>
+    }
+    class ISmtLine {
+        <<interface>>
+    }
+
+    class CliApplication {
+        +RunAsync() int
+    }
+    class MainMenu
+    class ComponentMenu
+    class BoardMenu
+    class OrderMenu
+    class QuantityListEditor
+    class ConsolePrompts
+    class DemoDataSeeder {
+        +SeedIfEmptyAsync() bool
+    }
+
+    JsonRepository <|-- JsonComponentRepository
+    JsonRepository <|-- JsonBoardRepository
+    JsonRepository <|-- JsonOrderRepository
+    JsonRepository --> JsonFileStore
+    JsonFileStore ..> JsonStorageOptions
+    IComponentRepository <|.. JsonComponentRepository
+    IBoardRepository <|.. JsonBoardRepository
+    IOrderRepository <|.. JsonOrderRepository
+    ISmtLine <|.. SimulatedSmtLine
+    SimulatedSmtLine ..> LineJob : reads payload into
+    SimulatedSmtLine ..> SimulatedSmtLineOptions
+
+    CliApplication --> DemoDataSeeder
+    CliApplication --> MainMenu
+    MainMenu --> ComponentMenu
+    MainMenu --> BoardMenu
+    MainMenu --> OrderMenu
+    BoardMenu --> QuantityListEditor : bill of materials
+    OrderMenu --> QuantityListEditor : order lines
+    ComponentMenu --> ConsolePrompts
+    BoardMenu --> ConsolePrompts
+    OrderMenu --> ConsolePrompts
+```
+
+`JsonRepository` also takes the document type as a second type parameter; each repository maps its aggregate to its own document record (`ComponentDocument`, `BoardDocument`, `OrderDocument`). The menus call the application services shown above; `Program` registers everything through `AddApplication`, `AddInfrastructure` and `AddCli`.
 
 ## Integration contract
 
@@ -80,7 +368,7 @@ The order download is the application's interface to the rest of the production 
 - The `ISmtLine` port receives the serialized JSON, not the DTO instance. A line implementation therefore depends only on the JSON format, exactly as a separately developed line would.
 - The payload carries a schema version. Within a version, changes are additive only; breaking changes introduce a new version.
 - Consumers follow the tolerant reader principle and ignore fields they do not know.
-- Contract tests compare the serialized payload against an approved example, so an unintended format change fails the build instead of reaching the line. The approved example also serves as the documented reference of the format.
+- Contract tests compare the serialized payload against an approved example, so an unintended format change fails the build instead of reaching the line. The approved example also serves as the documented reference of the format. The fields, formats and consumer expectations are described in the [download contract](download-contract.md).
 
 The port distinguishes two kinds of outcome:
 

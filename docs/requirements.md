@@ -65,16 +65,16 @@ The boundary follows the chosen interpretation of the brief: boards and componen
 
 ## Phase 1: core requirements
 
-- [ ] Create, edit, search and remove one or more orders, boards and components (see [batch operations](#interpretations))
-- [ ] Download an order to a simulated production line
-- [ ] Serialize data to JSON for interoperability (order-download payload)
-- [ ] Persist data to JSON files using `System.Text.Json`
-- [ ] Data persists across application restarts
-- [ ] Log relevant actions and errors using a commonly adopted logging framework
-- [ ] Apply OOP principles (e.g. SOLID, DRY) and standard design patterns (including the DDD patterns aggregate, value object, repository and domain service)
-- [ ] Unit test for at least one representative method
-- [ ] Platform-independent application
-- [ ] Outline of the modelled classes and architecture for the sprint review
+- [x] Create, edit, search and remove one or more orders, boards and components (see [batch operations](#interpretations))
+- [x] Download an order to a simulated production line
+- [x] Serialize data to JSON for interoperability (order-download payload)
+- [x] Persist data to JSON files using `System.Text.Json`
+- [x] Data persists across application restarts
+- [x] Log relevant actions and errors using a commonly adopted logging framework
+- [x] Apply OOP principles (e.g. SOLID, DRY) and standard design patterns (including the DDD patterns aggregate, value object, repository and domain service)
+- [x] Unit test for at least one representative method
+- [x] Platform-independent application
+- [x] Outline of the modelled classes and architecture for the sprint review
 
 ## Phase 2: optional extensions
 
@@ -152,4 +152,6 @@ The detailed reasoning is described in the [domain model](domain-model.md).
 - **Timestamps.** The order date and the time of download are stored as `DateTimeOffset`, so they stay unambiguous across time zones.
 - **Order download enhancement.** The simulated production payload may include calculated total component demand. This is an extension, not an explicit challenge requirement.
 - **Persistence evolution.** Phase 1 uses JSON files. Phase 2 adds SQLite repositories as the default, keeps JSON-file repositories selectable, and does not change the domain model.
+- **Unavailable line.** A configuration switch makes the simulated line unreachable, so the handling and logging of technical failures can be demonstrated.
+- **Demo data.** On a start with an empty store, the console application creates a small data set through the regular use cases: one order that the simulated line accepts and one that it rejects because of a board's dimensions. It can be switched off via configuration.
 - **Test projects.** Domain, application and infrastructure each have their own test project, so tests follow the same dependency rule as the code. The contract test of the download payload lives next to the contract in the application tests. See [project dependencies](architecture.md#project-dependencies).

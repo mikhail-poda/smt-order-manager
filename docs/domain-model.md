@@ -126,7 +126,7 @@ classDiagram
     BomEntry "0..*" --> "1" Component : references by Id
 ```
 
-The diagram uses UML notation. A filled diamond marks composition: an object is part of its aggregate and is created and deleted with it. An arrow marks a reference to another aggregate by identifier.
+The diagram uses UML notation. A filled diamond marks composition: an object is part of its aggregate and is created and deleted with it. An arrow marks a reference to another aggregate by identifier. The diagram shows the concepts and their data; the [class outline](architecture.md#class-outline) shows the classes as implemented, with their operations.
 
 | Aggregate | Aggregate root | Contains | References | Represents in the requirements |
 |---|---|---|---|---|
