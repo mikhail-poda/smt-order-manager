@@ -21,7 +21,7 @@ public sealed class ComponentEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Post_ThenGetWithSearch_ReturnsCreatedComponent()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var created = await ApiArrange.CreateComponentAsync(client, "RES-10K-0402", Token);
         await ApiArrange.CreateComponentAsync(client, "CAP-100N-0402", Token);
 
@@ -39,7 +39,7 @@ public sealed class ComponentEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Post_WithBlankName_Returns422WithViolationsAndStoresNothing()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
 
         using var response = await client.PostAsJsonAsync(
             "/api/components",
@@ -58,7 +58,7 @@ public sealed class ComponentEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Post_WithEmptyBatch_Returns400()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
 
         using var response = await client.PostAsJsonAsync(
             "/api/components",
@@ -72,7 +72,7 @@ public sealed class ComponentEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Delete_WithUnusedComponents_ReturnsRemovedCount()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var resistor = await ApiArrange.CreateComponentAsync(client, "RES-10K-0402", Token);
         var capacitor = await ApiArrange.CreateComponentAsync(client, "CAP-100N-0402", Token);
 
@@ -88,7 +88,7 @@ public sealed class ComponentEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Delete_WithComponentUsedByBoard_Returns422AndKeepsComponent()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var resistor = await ApiArrange.CreateComponentAsync(client, "RES-10K-0402", Token);
         await ApiArrange.CreateBoardAsync(client, "Controller", 100m, resistor.Id, Token);
 

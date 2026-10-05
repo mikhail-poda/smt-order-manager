@@ -1,0 +1,43 @@
+﻿@baseUrl = http://localhost:5080
+
+### 1. Without login: 401
+# @no-cookie-jar
+GET {{baseUrl}}/api/orders
+
+### 2. Log in: 200, sets the SmtOrderManager.Auth cookie
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "demo",
+  "password": "smt-demo"
+}
+
+### 3. With the cookie: the demo orders
+GET {{baseUrl}}/api/orders
+
+> {%
+    client.global.set("acceptedOrderId", response.body.find(order => order.name === "Controllers and sensors").id);
+    client.global.set("rejectedOrderId", response.body.find(order => order.name === "Backplanes").id);
+%}
+
+### 4. Who is logged in
+GET {{baseUrl}}/api/auth/me
+
+### 5. Download the order the line accepts: accepted is true, with a job reference
+POST {{baseUrl}}/api/orders/{{acceptedOrderId}}/download
+
+### 6. Download the order the line rejects: 200, accepted is false, with the reason
+POST {{baseUrl}}/api/orders/{{rejectedOrderId}}/download
+
+### 7. Violations: 422 with target and message per item
+POST {{baseUrl}}/api/components
+Content-Type: application/json
+
+[
+  { "name": "RES-1K-0402", "description": null },
+  { "name": "  ", "description": null }
+]
+
+### 8. Log out: 204, afterwards request 3 returns 401 again
+POST {{baseUrl}}/api/auth/logout

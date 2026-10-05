@@ -24,7 +24,7 @@ public sealed class OrderEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Download_WhenLineAccepts_ReturnsAnswerAndMarksOrderDownloaded()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var order = await CreateOrderAsync(client);
 
         using var response = await PostDownloadAsync(client, order.Id);
@@ -40,7 +40,7 @@ public sealed class OrderEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Download_WhenLineRejects_Returns200WithReasonsAndKeepsDraft()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var order = await CreateOrderAsync(client);
         _factory.Line.RejectionReasons = ["Board 'Controller' is too long."];
 
@@ -57,7 +57,7 @@ public sealed class OrderEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Download_WhenLineUnavailable_Returns503()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
         var order = await CreateOrderAsync(client);
         _factory.Line.IsUnavailable = true;
 
@@ -69,7 +69,7 @@ public sealed class OrderEndpointsTests : IAsyncDisposable
     [Fact]
     public async Task Download_WithUnknownOrder_Returns422()
     {
-        using var client = _factory.CreateClient();
+        using var client = await _factory.CreateAuthenticatedClientAsync(Token);
 
         using var response = await PostDownloadAsync(client, Guid.NewGuid());
 

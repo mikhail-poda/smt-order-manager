@@ -1,8 +1,17 @@
 using Serilog;
 using SmtOrderManager.Api;
+using SmtOrderManager.Api.Authentication;
 using SmtOrderManager.Api.Endpoints;
 using SmtOrderManager.Application;
 using SmtOrderManager.Infrastructure;
+
+// Creates the value for Auth:PasswordHash without starting the server:
+// dotnet run --project src/SmtOrderManager.Api -- hash-password <password>
+if (args is ["hash-password", var password])
+{
+    Console.WriteLine(PasswordHashing.Hash(password));
+    return;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,18 +24,23 @@ builder.Services.AddSerilog((services, configuration) => configuration
 builder.Services
     .AddApplication(builder.Configuration)
     .AddInfrastructure(builder.Configuration)
-    .AddApi();
+    .AddApi(builder.Configuration);
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapOpenApi();
 app.MapHealthChecks("/health");
+app.MapAuthEndpoints();
 
-app.MapComponentEndpoints();
-app.MapBoardEndpoints();
-app.MapOrderEndpoints();
+// Everything else under /api requires a logged-in user.
+app.MapComponentEndpoints().RequireAuthorization();
+app.MapBoardEndpoints().RequireAuthorization();
+app.MapOrderEndpoints().RequireAuthorization();
 
 await app.RunAsync();
