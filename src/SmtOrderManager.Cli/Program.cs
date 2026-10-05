@@ -1,11 +1,15 @@
 using System.Globalization;
-
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using SmtOrderManager.Application;
 using SmtOrderManager.Cli;
 using SmtOrderManager.Infrastructure;
+
+// Component descriptions may contain characters such as Ω, which some consoles only show
+// correctly with UTF-8 output.
+Console.OutputEncoding = Encoding.UTF8;
 
 // Logs problems that occur before the configured logger exists, such as an unreadable
 // appsettings.json. It is replaced by the configured logger once the host is built.
@@ -32,7 +36,7 @@ try
         .AddApplication()
         .AddInfrastructure(builder.Configuration);
 
-    builder.Services.AddSingleton<CliApplication>();
+    builder.Services.AddCli();
 
     using var host = builder.Build();
 
@@ -48,11 +52,6 @@ try
     await host.StopAsync();
 
     return exitCode;
-}
-catch (OperationCanceledException)
-{
-    // Ctrl+C stops the host, which cancels the running application. That is a normal exit.
-    return 0;
 }
 catch (Exception exception)
 {
