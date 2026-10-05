@@ -23,7 +23,8 @@ namespace SmtOrderManager.Infrastructure.SmtLine;
 /// </para>
 /// <para>
 /// A job the line cannot read or cannot handle is a rejection, because the line was reached
-/// and answered. Only a failure to store an accepted job is a technical failure.
+/// and answered. A technical failure is either a failure to store an accepted job or a line
+/// switched to unavailable through <see cref="SimulatedSmtLineOptions.IsAvailable"/>.
 /// </para>
 /// </remarks>
 internal sealed class SimulatedSmtLine : ISmtLine
@@ -63,6 +64,12 @@ internal sealed class SimulatedSmtLine : ISmtLine
     {
         ArgumentNullException.ThrowIfNull(payloadJson);
         cancellationToken.ThrowIfCancellationRequested();
+
+        // An unreachable line never sees the job, so nothing is read, checked or stored.
+        if (!_options.IsAvailable)
+        {
+            throw new SmtLineUnavailableException($"Line {_options.LineId} is not reachable (simulated outage).");
+        }
 
         var receivedAt = _timeProvider.GetUtcNow();
         var read = Read(payloadJson);

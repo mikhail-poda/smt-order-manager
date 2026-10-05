@@ -54,4 +54,10 @@ public sealed class SimulatedSmtLineOptions
     /// </remarks>
     [Range(typeof(decimal), "0.01", "100000", ParseLimitsInInvariantCulture = true, ConvertValueInInvariantCulture = true)]
     public decimal MaxBoardWidth { get; init; } = 460m;
+
+    /// <summary>
+    /// Whether the line can be reached. When <see langword="false"/>, every download fails as if
+    /// the line were offline, so the handling and logging of technical failures can be shown.
+    /// </summary>
+    public bool IsAvailable { get; init; } = true;
 }

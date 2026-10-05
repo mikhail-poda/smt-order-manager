@@ -286,6 +286,32 @@ public sealed class SimulatedSmtLineTests : IDisposable
         Assert.Equal(["Schema version 2 is not supported. Supported versions: 1."], result.Reasons);
     }
 
+    [Fact]
+    public async Task DownloadAsync_WhenUnavailable_ThrowsSmtLineUnavailableExceptionNamingLine()
+    {
+        var payload = await ReadApprovedPayloadAsync();
+
+        var exception = await Assert.ThrowsAsync<SmtLineUnavailableException>(
+            () => CreateLine(isAvailable: false).DownloadAsync(payload, Token));
+
+        Assert.Contains(LineId, exception.Message);
+        Assert.False(Directory.Exists(InboxDirectory));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_WhenUnavailable_ThrowsEvenForUnreadableJob()
+    {
+        // The line is not reached, so it cannot answer with a rejection.
+        await Assert.ThrowsAsync<SmtLineUnavailableException>(
+            () => CreateLine(isAvailable: false).DownloadAsync("not json", Token));
+    }
+
+    [Fact]
+    public void Options_ByDefault_AreAvailable()
+    {
+        Assert.True(new SimulatedSmtLineOptions().IsAvailable);
+    }
+
     [Theory]
     [InlineData(0, 200)]
     [InlineData(300, -1)]
@@ -308,7 +334,8 @@ public sealed class SimulatedSmtLineTests : IDisposable
     private SimulatedSmtLine CreateLine(
         int[]? supportedVersions = null,
         decimal maxBoardLength = 10_000m,
-        decimal maxBoardWidth = 10_000m) =>
+        decimal maxBoardWidth = 10_000m,
+        bool isAvailable = true) =>
         new(
             new SimulatedSmtLineOptions
             {
@@ -317,6 +344,7 @@ public sealed class SimulatedSmtLineTests : IDisposable
                 SupportedSchemaVersions = supportedVersions ?? [1],
                 MaxBoardLength = maxBoardLength,
                 MaxBoardWidth = maxBoardWidth,
+                IsAvailable = isAvailable,
             },
             new FixedTimeProvider(ReceivedAt));
 
