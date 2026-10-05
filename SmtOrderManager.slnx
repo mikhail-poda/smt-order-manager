@@ -1,11 +1,13 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/SmtOrderManager.Api/SmtOrderManager.Api.csproj" />
     <Project Path="src/SmtOrderManager.Application/SmtOrderManager.Application.csproj" />
     <Project Path="src/SmtOrderManager.Cli/SmtOrderManager.Cli.csproj" />
     <Project Path="src/SmtOrderManager.Domain/SmtOrderManager.Domain.csproj" />
     <Project Path="src/SmtOrderManager.Infrastructure/SmtOrderManager.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SmtOrderManager.Api.Tests/SmtOrderManager.Api.Tests.csproj" />
     <Project Path="tests/SmtOrderManager.Application.Tests/SmtOrderManager.Application.Tests.csproj" />
     <Project Path="tests/SmtOrderManager.Domain.Tests/SmtOrderManager.Domain.Tests.csproj" />
     <Project Path="tests/SmtOrderManager.Infrastructure.Tests/SmtOrderManager.Infrastructure.Tests.csproj" />
