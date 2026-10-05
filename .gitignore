@@ -67,3 +67,6 @@ docs/presentation-briefing.en.md
 data/
 inbox/
 logs/
+
+node_modules/
+src/SmtOrderManager.Api/wwwroot/

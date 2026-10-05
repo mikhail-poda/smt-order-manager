@@ -31,6 +31,11 @@ var app = builder.Build();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
+// The web UI, built into wwwroot. Served before authentication, so the login page loads
+// without a session. The UI has no client-side routes, so no fallback to index.html is needed.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseAuthentication();
 app.UseAuthorization();
 

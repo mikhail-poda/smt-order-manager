@@ -31,7 +31,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v5
         with:
-          global-json-file: global.json
+          dotnet-version: 10.0.x
 
       - name: Restore
         run: dotnet restore
@@ -41,3 +41,32 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build --configuration Release
+
+  web:
+    name: Web UI type check and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: src/SmtOrderManager.Web
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: src/SmtOrderManager.Web/.nvmrc
+          cache: npm
+          cache-dependency-path: src/SmtOrderManager.Web/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build

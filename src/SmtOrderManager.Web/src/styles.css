@@ -1,0 +1,210 @@
+:root {
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: #1f2933;
+  background: #f5f7fa;
+  --accent: #2563eb;
+  --border: #d5dbe3;
+}
+
+body {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+button[type='submit'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  padding: 0.75rem 1.5rem;
+  background: white;
+  border-bottom: 1px solid var(--border);
+}
+
+nav {
+  display: flex;
+  gap: 0.5rem;
+}
+
+nav button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
+.user {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 3rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  background: white;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+td.buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.search input {
+  flex: 1;
+  max-width: 24rem;
+}
+
+.editor {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+  margin-top: 2rem;
+  padding: 1rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.editor h3 {
+  margin: 0;
+}
+
+label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.rows {
+  display: grid;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.row select {
+  flex: 1;
+}
+
+.row input {
+  width: 6rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.muted {
+  color: #6b7785;
+  font-size: 0.85rem;
+}
+
+.status {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: #e5e9f0;
+}
+
+.status.downloaded {
+  background: #d1fae5;
+}
+
+.problem,
+.answer {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid;
+}
+
+.problem,
+.answer.rejected {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.answer.accepted {
+  background: #ecfdf5;
+  border-color: #6ee7b7;
+}
+
+.problem ul,
+.answer ul,
+.answer p {
+  margin: 0.5rem 0 0;
+}
+
+.login {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 0;
+}
+
+.login form {
+  display: grid;
+  gap: 0.75rem;
+  width: 20rem;
+  padding: 1.5rem;
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
