@@ -1,5 +1,6 @@
 # SMT Order Manager
 
+[![CI](https://github.com/mikhail-poda/smt-order-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/mikhail-poda/smt-order-manager/actions/workflows/ci.yml)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
