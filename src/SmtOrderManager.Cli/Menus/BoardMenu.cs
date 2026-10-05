@@ -1,4 +1,5 @@
 using SmtOrderManager.Application.Boards;
+using SmtOrderManager.Application.Components;
 using SmtOrderManager.Cli.Interaction;
 
 namespace SmtOrderManager.Cli.Menus;
@@ -6,8 +7,15 @@ namespace SmtOrderManager.Cli.Menus;
 /// <summary>
 /// Creates, edits, searches and removes boards with their bills of materials.
 /// </summary>
-internal sealed class BoardMenu(BoardService boards, BillOfMaterialsEditor bomEditor, ConsolePrompts prompts)
+internal sealed class BoardMenu(
+    BoardService boards,
+    ComponentService components,
+    QuantityListEditor listEditor,
+    ConsolePrompts prompts)
 {
+    private static readonly QuantityListTexts BillOfMaterialsTexts =
+        new("Bill of materials", "components", "Placements per board");
+
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         while (true)
@@ -51,7 +59,7 @@ internal sealed class BoardMenu(BoardService boards, BillOfMaterialsEditor bomEd
             var description = prompts.ReadOptionalText("Description");
             var length = prompts.ReadDecimal("Length in mm");
             var width = prompts.ReadDecimal("Width in mm");
-            var billOfMaterials = await bomEditor.EditAsync([], cancellationToken);
+            var billOfMaterials = await EditBillOfMaterialsAsync([], cancellationToken);
 
             commands.Add(new CreateBoardCommand(name, description, length, width, billOfMaterials));
         }
@@ -95,7 +103,7 @@ internal sealed class BoardMenu(BoardService boards, BillOfMaterialsEditor bomEd
             var length = prompts.ReadDecimal("Length in mm", board.Length);
             var width = prompts.ReadDecimal("Width in mm", board.Width);
             IReadOnlyList<BomEntryInput> billOfMaterials = prompts.Confirm("Edit the bill of materials?", defaultAnswer: false)
-                ? await bomEditor.EditAsync(board.BillOfMaterials, cancellationToken)
+                ? await EditBillOfMaterialsAsync(board.BillOfMaterials, cancellationToken)
                 : [.. board.BillOfMaterials.Select(entry => new BomEntryInput(entry.ComponentId, entry.Quantity))];
 
             commands.Add(new UpdateBoardCommand(board.Id, name, description, length, width, billOfMaterials));
@@ -163,6 +171,34 @@ internal sealed class BoardMenu(BoardService boards, BillOfMaterialsEditor bomEd
         }
 
         prompts.WriteSuccess($"Removed {result.Value} board(s).");
+    }
+
+    private async Task<IReadOnlyList<BomEntryInput>> EditBillOfMaterialsAsync(
+        IReadOnlyList<BomEntryDetails> current,
+        CancellationToken cancellationToken)
+    {
+        var entries = await listEditor.EditAsync(
+            BillOfMaterialsTexts,
+            [.. current.Select(entry => new QuantityEntry(entry.ComponentId, entry.ComponentName, entry.Quantity))],
+            PickComponentAsync,
+            cancellationToken);
+
+        return [.. entries.Select(entry => new BomEntryInput(entry.Id, entry.Quantity))];
+    }
+
+    private async Task<QuantityEntry?> PickComponentAsync(CancellationToken cancellationToken)
+    {
+        var found = await components.SearchAsync(prompts.ReadText("Component search text (Enter for all)"), cancellationToken);
+
+        if (found.Count == 0)
+        {
+            prompts.WriteLine("No components found.");
+            return null;
+        }
+
+        var component = prompts.SelectOne(found, ComponentMenu.Describe, "Component");
+
+        return component is null ? null : new QuantityEntry(component.Id, component.Name, Quantity: 0);
     }
 
     private async Task<IReadOnlyList<BoardDetails>> SelectAsync(string label, CancellationToken cancellationToken)

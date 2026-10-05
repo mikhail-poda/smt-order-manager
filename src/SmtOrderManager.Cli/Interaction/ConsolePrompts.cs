@@ -80,7 +80,7 @@ internal sealed class ConsolePrompts(TextReader input, TextWriter output)
     /// Reads a decimal number. With a current value, Enter keeps it.
     /// </summary>
     public decimal ReadDecimal(string label, decimal? current = null) =>
-        ReadNumber(
+        ReadValue(
             label,
             current,
             current is null ? null : Formatting.Number(current.Value),
@@ -95,12 +95,24 @@ internal sealed class ConsolePrompts(TextReader input, TextWriter output)
     /// Reads a whole number. With a current value, Enter keeps it.
     /// </summary>
     public int ReadInteger(string label, int? current = null) =>
-        ReadNumber(
+        ReadValue(
             label,
             current,
             current?.ToString(CultureInfo.InvariantCulture),
             TryParseInteger,
             "Enter a whole number, for example 12.");
+
+    /// <summary>
+    /// Reads a date with an optional time of day, in local time. With a current value, Enter
+    /// keeps it unchanged.
+    /// </summary>
+    public DateTimeOffset ReadDateTime(string label, DateTimeOffset? current = null) =>
+        ReadValue(
+            $"{label} (yyyy-MM-dd HH:mm)",
+            current,
+            current is null ? null : Formatting.Timestamp(current.Value),
+            TryParseLocalDateTime,
+            "Enter a date like 2026-10-05 or a date and time like 2026-10-05 14:30.");
 
     /// <summary>
     /// Asks a yes or no question. Enter gives the default answer.
@@ -193,11 +205,13 @@ internal sealed class ConsolePrompts(TextReader input, TextWriter output)
     public void WriteError(string message) => output.WriteLine($"Error: {message}");
 
     /// <summary>
-    /// Reports a rejected batch with one line per violated rule.
+    /// Reports a rejected request with one line per violated rule.
     /// </summary>
-    public void WriteViolations(IReadOnlyList<Violation> violations)
+    /// <param name="violations">The violated rules.</param>
+    /// <param name="consequence">What did not happen because of them.</param>
+    public void WriteViolations(IReadOnlyList<Violation> violations, string consequence = "Nothing was saved.")
     {
-        output.WriteLine("Error: Nothing was saved. Correct the following and try again:");
+        output.WriteLine($"Error: {consequence} Correct the following and try again:");
 
         foreach (var violation in violations)
         {
@@ -205,9 +219,9 @@ internal sealed class ConsolePrompts(TextReader input, TextWriter output)
         }
     }
 
-    private delegate bool NumberParser<T>(string text, out T value);
+    private delegate bool Parser<T>(string text, out T value);
 
-    private T ReadNumber<T>(string label, T? current, string? currentText, NumberParser<T> parse, string hint)
+    private T ReadValue<T>(string label, T? current, string? currentText, Parser<T> parse, string hint)
         where T : struct
     {
         while (true)
@@ -246,6 +260,23 @@ internal sealed class ConsolePrompts(TextReader input, TextWriter output)
             var number = (index + 1).ToString(CultureInfo.InvariantCulture).PadLeft(width);
             output.WriteLine($"  {number}  {describe(items[index])}");
         }
+    }
+
+    private static bool TryParseLocalDateTime(string text, out DateTimeOffset value)
+    {
+        if (DateTime.TryParseExact(
+                text,
+                ["yyyy-MM-dd HH:mm", "yyyy-MM-dd"],
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var local))
+        {
+            value = new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     private static bool TryParseInteger(string text, out int value) =>

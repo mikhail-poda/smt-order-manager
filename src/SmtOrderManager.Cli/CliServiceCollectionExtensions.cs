@@ -15,9 +15,10 @@ internal static class CliServiceCollectionExtensions
         services.AddSingleton<IHostLifetime, CliHostLifetime>();
         services.AddSingleton(new ConsolePrompts(Console.In, Console.Out));
 
-        services.AddSingleton<BillOfMaterialsEditor>();
+        services.AddSingleton<QuantityListEditor>();
         services.AddSingleton<ComponentMenu>();
         services.AddSingleton<BoardMenu>();
+        services.AddSingleton<OrderMenu>();
         services.AddSingleton<MainMenu>();
         services.AddSingleton<CliApplication>();
 
