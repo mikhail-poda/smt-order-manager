@@ -23,4 +23,10 @@
     <ProjectReference Include="..\..\src\SmtOrderManager.Infrastructure\SmtOrderManager.Infrastructure.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\SmtOrderManager.Application.Tests\Contracts\order-download.v1.json"
+          Link="Contracts\order-download.v1.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
