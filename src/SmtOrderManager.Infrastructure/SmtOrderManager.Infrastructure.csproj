@@ -4,6 +4,10 @@
     <ProjectReference Include="..\SmtOrderManager.Application\SmtOrderManager.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmtOrderManager.Infrastructure.Tests" />
+  </ItemGroup>
+
   <PropertyGroup>
   </PropertyGroup>
 
