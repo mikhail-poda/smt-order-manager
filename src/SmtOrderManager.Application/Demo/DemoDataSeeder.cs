@@ -5,7 +5,7 @@ using SmtOrderManager.Application.Common;
 using SmtOrderManager.Application.Components;
 using SmtOrderManager.Application.Orders;
 
-namespace SmtOrderManager.Cli.Demo;
+namespace SmtOrderManager.Application.Demo;
 
 /// <summary>
 /// Fills an empty store with data that shows the main features right away.
@@ -22,27 +22,55 @@ namespace SmtOrderManager.Cli.Demo;
 /// user. Seeding only happens when there are no components, boards and orders at all, so
 /// existing data is never changed or mixed with demo data.
 /// </para>
+/// <para>
+/// It only uses the use cases, so it belongs to the application layer and every host runs it
+/// at startup.
+/// </para>
 /// </remarks>
-internal sealed partial class DemoDataSeeder(
-    ComponentService components,
-    BoardService boards,
-    OrderService orders,
-    TimeProvider timeProvider,
-    IOptions<DemoDataOptions> options,
-    ILogger<DemoDataSeeder> logger)
+public sealed partial class DemoDataSeeder
 {
+    private readonly ComponentService _components;
+    private readonly BoardService _boards;
+    private readonly OrderService _orders;
+    private readonly TimeProvider _timeProvider;
+    private readonly DemoDataOptions _options;
+    private readonly ILogger<DemoDataSeeder> _logger;
+
+    public DemoDataSeeder(
+        ComponentService components,
+        BoardService boards,
+        OrderService orders,
+        TimeProvider timeProvider,
+        IOptions<DemoDataOptions> options,
+        ILogger<DemoDataSeeder> logger)
+    {
+        ArgumentNullException.ThrowIfNull(components);
+        ArgumentNullException.ThrowIfNull(boards);
+        ArgumentNullException.ThrowIfNull(orders);
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _components = components;
+        _boards = boards;
+        _orders = orders;
+        _timeProvider = timeProvider;
+        _options = options.Value;
+        _logger = logger;
+    }
+
     /// <summary>
     /// Creates the demo data if it is enabled and the store is empty.
     /// </summary>
     /// <returns>Whether demo data was created.</returns>
     public async Task<bool> SeedIfEmptyAsync(CancellationToken cancellationToken)
     {
-        if (!options.Value.Enabled || !await IsStoreEmptyAsync(cancellationToken))
+        if (!_options.Enabled || !await IsStoreEmptyAsync(cancellationToken))
         {
             return false;
         }
 
-        var createdComponents = Expect(await components.CreateAsync(
+        var createdComponents = Expect(await _components.CreateAsync(
             [
                 new CreateComponentCommand("RES-10K-0402", "Resistor 10 kΩ, 1 %, 0402"),
                 new CreateComponentCommand("CAP-100N-0402", "Ceramic capacitor 100 nF, X7R, 0402"),
@@ -53,7 +81,7 @@ internal sealed partial class DemoDataSeeder(
         var resistor = componentIds["RES-10K-0402"];
         var capacitor = componentIds["CAP-100N-0402"];
 
-        var createdBoards = Expect(await boards.CreateAsync(
+        var createdBoards = Expect(await _boards.CreateAsync(
             [
                 new CreateBoardCommand(
                     "Controller",
@@ -80,9 +108,9 @@ internal sealed partial class DemoDataSeeder(
         var sensor = boardIds["Sensor"];
         var backplane = boardIds["Backplane"];
 
-        var orderDate = timeProvider.GetLocalNow();
+        var orderDate = _timeProvider.GetLocalNow();
 
-        Expect(await orders.CreateAsync(
+        Expect(await _orders.CreateAsync(
             [
                 new CreateOrderCommand(
                     "Controllers and sensors",
@@ -97,15 +125,15 @@ internal sealed partial class DemoDataSeeder(
             ],
             cancellationToken));
 
-        LogSeeded(logger);
+        LogSeeded(_logger);
 
         return true;
     }
 
     private async Task<bool> IsStoreEmptyAsync(CancellationToken cancellationToken) =>
-        (await components.SearchAsync(null, cancellationToken)).Count == 0
-        && (await boards.SearchAsync(null, cancellationToken)).Count == 0
-        && (await orders.SearchAsync(null, cancellationToken)).Count == 0;
+        (await _components.SearchAsync(null, cancellationToken)).Count == 0
+        && (await _boards.SearchAsync(null, cancellationToken)).Count == 0
+        && (await _orders.SearchAsync(null, cancellationToken)).Count == 0;
 
     /// <summary>
     /// Returns the value of a result that must succeed. Fixed demo data that breaks a rule is a

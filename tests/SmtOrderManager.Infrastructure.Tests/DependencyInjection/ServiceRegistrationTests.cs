@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using SmtOrderManager.Application;
 using SmtOrderManager.Application.Boards;
 using SmtOrderManager.Application.Components;
+using SmtOrderManager.Application.Demo;
 using SmtOrderManager.Application.Downloads;
 using SmtOrderManager.Application.Orders;
 using SmtOrderManager.Application.Persistence;
@@ -54,6 +55,7 @@ public sealed class ServiceRegistrationTests
         Assert.NotNull(provider.GetRequiredService<BoardService>());
         Assert.NotNull(provider.GetRequiredService<OrderService>());
         Assert.NotNull(provider.GetRequiredService<OrderDownloadService>());
+        Assert.NotNull(provider.GetRequiredService<DemoDataSeeder>());
     }
 
     [Fact]
@@ -189,9 +191,10 @@ public sealed class ServiceRegistrationTests
 
     private static ServiceProvider BuildProvider(IReadOnlyDictionary<string, string?> settings)
     {
+        var configuration = BuildConfiguration(settings);
         var services = new ServiceCollection();
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
-        services.AddApplication().AddInfrastructure(BuildConfiguration(settings));
+        services.AddApplication(configuration).AddInfrastructure(configuration);
 
         return services.BuildServiceProvider(new ServiceProviderOptions
         {

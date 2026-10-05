@@ -33,10 +33,10 @@ try
         .ReadFrom.Services(services));
 
     builder.Services
-        .AddApplication()
+        .AddApplication(builder.Configuration)
         .AddInfrastructure(builder.Configuration);
 
-    builder.Services.AddCli(builder.Configuration);
+    builder.Services.AddCli();
 
     using var host = builder.Build();
 

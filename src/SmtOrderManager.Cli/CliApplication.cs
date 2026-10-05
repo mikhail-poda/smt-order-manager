@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using SmtOrderManager.Cli.Demo;
+using SmtOrderManager.Application.Demo;
 using SmtOrderManager.Cli.Interaction;
 using SmtOrderManager.Cli.Menus;
 using SmtOrderManager.Infrastructure.Persistence;

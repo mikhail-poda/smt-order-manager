@@ -1,9 +1,9 @@
-namespace SmtOrderManager.Cli.Demo;
+namespace SmtOrderManager.Application.Demo;
 
 /// <summary>
 /// Settings of the demo data.
 /// </summary>
-internal sealed class DemoDataOptions
+public sealed class DemoDataOptions
 {
     /// <summary>
     /// The configuration section the options are bound from.
