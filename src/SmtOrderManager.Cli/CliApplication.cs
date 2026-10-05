@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using SmtOrderManager.Cli.Demo;
 using SmtOrderManager.Cli.Interaction;
 using SmtOrderManager.Cli.Menus;
 using SmtOrderManager.Infrastructure.Persistence.Json;
@@ -12,6 +13,7 @@ namespace SmtOrderManager.Cli;
 /// </summary>
 internal sealed partial class CliApplication(
     MainMenu mainMenu,
+    DemoDataSeeder demoDataSeeder,
     ConsolePrompts prompts,
     IOptions<JsonStorageOptions> storageOptions,
     IOptions<SimulatedSmtLineOptions> lineOptions,
@@ -32,6 +34,11 @@ internal sealed partial class CliApplication(
         prompts.WriteLine("SMT Order Manager");
         prompts.WriteLine($"Data directory: {dataDirectory}");
         prompts.WriteLine($"SMT line:       {line.LineId} (inbox: {inboxDirectory})");
+
+        if (await demoDataSeeder.SeedIfEmptyAsync(cancellationToken))
+        {
+            prompts.WriteLine("The store was empty, so demo data was created: 2 components, 3 boards, 2 orders.");
+        }
 
         try
         {

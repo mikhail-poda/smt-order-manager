@@ -36,7 +36,7 @@ try
         .AddApplication()
         .AddInfrastructure(builder.Configuration);
 
-    builder.Services.AddCli();
+    builder.Services.AddCli(builder.Configuration);
 
     using var host = builder.Build();
 
