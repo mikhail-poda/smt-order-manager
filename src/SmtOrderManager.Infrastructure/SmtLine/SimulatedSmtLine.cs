@@ -16,8 +16,14 @@ namespace SmtOrderManager.Infrastructure.SmtLine;
 /// supported version is read into the line's own types, which ignore unknown fields.
 /// </para>
 /// <para>
-/// A job the line cannot read is a rejection, because the line was reached and answered. Only
-/// a failure to store an accepted job is a technical failure.
+/// A readable job is then checked against the line's capabilities. Every board must fit the
+/// configured maximum length and width. All boards are checked, so one rejection lists every
+/// board that does not fit. Boards are not rotated to fit: length is compared with the maximum
+/// length and width with the maximum width, which keeps the rule simple and predictable.
+/// </para>
+/// <para>
+/// A job the line cannot read or cannot handle is a rejection, because the line was reached
+/// and answered. Only a failure to store an accepted job is a technical failure.
 /// </para>
 /// </remarks>
 internal sealed class SimulatedSmtLine : ISmtLine
@@ -48,6 +54,9 @@ internal sealed class SimulatedSmtLine : ISmtLine
         _timeProvider = timeProvider;
         _supportedVersions = [.. options.SupportedSchemaVersions];
         _inboxDirectory = Path.GetFullPath(options.InboxDirectory);
+
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxBoardLength, nameof(options));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaxBoardWidth, nameof(options));
     }
 
     public async Task<LineDownloadResult> DownloadAsync(string payloadJson, CancellationToken cancellationToken = default)
@@ -61,6 +70,13 @@ internal sealed class SimulatedSmtLine : ISmtLine
         if (read.Job is null)
         {
             return LineDownloadResult.Reject(_options.LineId, receivedAt, [read.Reason!]);
+        }
+
+        var oversizedBoards = FindOversizedBoards(read.Job);
+
+        if (oversizedBoards.Count > 0)
+        {
+            return LineDownloadResult.Reject(_options.LineId, receivedAt, oversizedBoards);
         }
 
         var jobReference = await StoreInInboxAsync(read.Job, payloadJson, receivedAt, cancellationToken);
@@ -119,6 +135,20 @@ internal sealed class SimulatedSmtLine : ISmtLine
             return (job, null);
         }
     }
+
+    /// <summary>
+    /// Returns one reason for each board that exceeds the maximum length or width. A board
+    /// exactly at the limit fits.
+    /// </summary>
+    private List<string> FindOversizedBoards(LineJob job) =>
+    [
+        .. job.Boards
+            .Where(board => board.LengthMm > _options.MaxBoardLength || board.WidthMm > _options.MaxBoardWidth)
+            .Select(board => string.Create(
+                CultureInfo.InvariantCulture,
+                $"Board '{board.Name}' ({board.Id}) is {board.LengthMm:0.###} x {board.WidthMm:0.###} mm, "
+                + $"which exceeds the line maximum of {_options.MaxBoardLength:0.###} x {_options.MaxBoardWidth:0.###} mm.")),
+    ];
 
     /// <summary>
     /// Writes the job to the inbox exactly as received. The file is written under a temporary

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 using SmtOrderManager.Application.Downloads;
 using SmtOrderManager.Infrastructure.SmtLine;
@@ -16,6 +17,8 @@ namespace SmtOrderManager.Infrastructure.Tests.SmtLine;
 public sealed class SimulatedSmtLineTests : IDisposable
 {
     private const string LineId = "SMT-TEST-01";
+    private const decimal MaxLength = 300m;
+    private const decimal MaxWidth = 200m;
 
     private static readonly DateTimeOffset ReceivedAt = new(2026, 10, 6, 6, 0, 0, 123, TimeSpan.FromHours(2));
 
@@ -202,20 +205,145 @@ public sealed class SimulatedSmtLineTests : IDisposable
     }
 
     [Fact]
+    public async Task DownloadAsync_WithAllBoardsWithinLimits_Accepts()
+    {
+        var payload = await PayloadWithBoardSizesAsync((250m, 150m), (100m, 80m));
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.True(result.Accepted, string.Join(" ", result.Reasons));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_WithBoardExactlyAtLimits_Accepts()
+    {
+        var payload = await PayloadWithBoardSizesAsync((MaxLength, MaxWidth), (100m, 80m));
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.True(result.Accepted, string.Join(" ", result.Reasons));
+    }
+
+    [Theory]
+    [InlineData("300.01", "200")]
+    [InlineData("300", "200.01")]
+    [InlineData("450", "250")]
+    public async Task DownloadAsync_WithBoardAboveLimit_RejectsNamingBoardAndSizes(string length, string width)
+    {
+        var lengthMm = decimal.Parse(length, CultureInfo.InvariantCulture);
+        var widthMm = decimal.Parse(width, CultureInfo.InvariantCulture);
+        var payload = await PayloadWithBoardSizesAsync((lengthMm, widthMm), (100m, 80m));
+        var board = payload["boards"]![0]!;
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.False(result.Accepted);
+        Assert.Equal(
+            [
+                $"Board '{(string)board["name"]!}' ({(string)board["id"]!}) is {length} x {width} mm, "
+                + "which exceeds the line maximum of 300 x 200 mm.",
+            ],
+            result.Reasons);
+        Assert.Null(result.JobReference);
+        Assert.False(Directory.Exists(InboxDirectory));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_WithSeveralBoardsAboveLimit_ListsEveryBoard()
+    {
+        var payload = await PayloadWithBoardSizesAsync((400m, 100m), (100m, 250m));
+        var boardIds = payload["boards"]!.AsArray().Select(board => (string)board!["id"]!).ToList();
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.False(result.Accepted);
+        Assert.Collection(
+            result.Reasons,
+            reason => Assert.Contains(boardIds[0], reason),
+            reason => Assert.Contains(boardIds[1], reason));
+    }
+
+    [Fact]
+    public async Task DownloadAsync_WithBoardThatWouldFitOnlyRotated_Rejects()
+    {
+        // Boards are not rotated: 150 x 300 fits a 300 x 200 line only when turned by 90 degrees.
+        var payload = await PayloadWithBoardSizesAsync((150m, 300m), (100m, 80m));
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.False(result.Accepted);
+        Assert.Single(result.Reasons);
+    }
+
+    [Fact]
+    public async Task DownloadAsync_WithUnsupportedVersionAndOversizedBoard_RejectsForVersionOnly()
+    {
+        var payload = await PayloadWithBoardSizesAsync((400m, 100m), (100m, 80m));
+        payload["schemaVersion"] = 2;
+
+        var result = await CreateLimitedLine().DownloadAsync(payload.ToJsonString(), Token);
+
+        Assert.Equal(["Schema version 2 is not supported. Supported versions: 1."], result.Reasons);
+    }
+
+    [Theory]
+    [InlineData(0, 200)]
+    [InlineData(300, -1)]
+    public void Constructor_WithNonPositiveLimit_Throws(int maxLength, int maxWidth)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => CreateLine(maxBoardLength: maxLength, maxBoardWidth: maxWidth));
+    }
+
+    [Fact]
     public void Constructor_WithoutSupportedVersions_Throws()
     {
         Assert.Throws<ArgumentException>(() => CreateLine(supportedVersions: []));
     }
 
-    private SimulatedSmtLine CreateLine(int[]? supportedVersions = null) =>
+    /// <summary>
+    /// Creates the line under test. Without limits, they are far above any board in the approved
+    /// example, so tests that are not about dimensions are not affected by them.
+    /// </summary>
+    private SimulatedSmtLine CreateLine(
+        int[]? supportedVersions = null,
+        decimal maxBoardLength = 10_000m,
+        decimal maxBoardWidth = 10_000m) =>
         new(
             new SimulatedSmtLineOptions
             {
                 LineId = LineId,
                 InboxDirectory = InboxDirectory,
                 SupportedSchemaVersions = supportedVersions ?? [1],
+                MaxBoardLength = maxBoardLength,
+                MaxBoardWidth = maxBoardWidth,
             },
             new FixedTimeProvider(ReceivedAt));
+
+    /// <summary>
+    /// Creates a line that handles boards up to <see cref="MaxLength"/> x <see cref="MaxWidth"/> mm.
+    /// </summary>
+    private SimulatedSmtLine CreateLimitedLine() =>
+        CreateLine(maxBoardLength: MaxLength, maxBoardWidth: MaxWidth);
+
+    /// <summary>
+    /// Returns the approved example with the given dimensions, one pair per board in the
+    /// example, in order.
+    /// </summary>
+    private static async Task<JsonObject> PayloadWithBoardSizesAsync(params (decimal Length, decimal Width)[] sizes)
+    {
+        var payload = await ReadApprovedPayloadNodeAsync();
+        var boards = payload["boards"]!.AsArray();
+        Assert.Equal(boards.Count, sizes.Length);
+
+        for (var index = 0; index < sizes.Length; index++)
+        {
+            boards[index]!["lengthMm"] = sizes[index].Length;
+            boards[index]!["widthMm"] = sizes[index].Width;
+        }
+
+        return payload;
+    }
 
     private static Task<string> ReadApprovedPayloadAsync() => File.ReadAllTextAsync(ApprovedFile, Token);
 
