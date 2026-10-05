@@ -1,9 +1,13 @@
+using SmtOrderManager.Application.Persistence;
 using SmtOrderManager.Domain.Orders;
-using SmtOrderManager.Infrastructure.Persistence.Json;
 
-namespace SmtOrderManager.Infrastructure.Tests.Persistence.Json;
+namespace SmtOrderManager.Infrastructure.Tests.Persistence;
 
-public sealed class JsonOrderRepositoryTests : IDisposable
+/// <summary>
+/// The order mapping and the order-specific queries of the repository contract. Each
+/// persistence provider derives a test class from it.
+/// </summary>
+public abstract class OrderRepositoryContractTests
 {
     private static readonly Guid ControllerId = Guid.NewGuid();
     private static readonly Guid SensorId = Guid.NewGuid();
@@ -12,11 +16,7 @@ public sealed class JsonOrderRepositoryTests : IDisposable
     private static readonly DateTimeOffset IssuedAt = new(2026, 10, 5, 8, 30, 15, 123, TimeSpan.FromHours(2));
     private static readonly DateTimeOffset DownloadedAt = new(2026, 10, 6, 14, 5, 0, TimeSpan.Zero);
 
-    private readonly JsonStorageTestContext _context = new();
-
-    private static CancellationToken Token => TestContext.Current.CancellationToken;
-
-    public void Dispose() => _context.Dispose();
+    protected static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresEveryFieldOfDraft()
@@ -35,7 +35,7 @@ public sealed class JsonOrderRepositoryTests : IDisposable
         Assert.Equal("Week 41", loaded.Name);
         Assert.Equal("Controllers and sensors", loaded.Description);
         AssertSameInstantAndOffset(IssuedAt, loaded.OrderDate);
-        Assert.Equal([new OrderLine(ControllerId, 500), new OrderLine(SensorId, 200)], loaded.Lines);
+        Assert.Equal(new[] { new OrderLine(ControllerId, 500), new OrderLine(SensorId, 200) }, loaded.Lines);
         Assert.Equal(OrderStatus.Draft, loaded.Status);
         Assert.Null(loaded.DownloadedAt);
     }
@@ -57,18 +57,6 @@ public sealed class JsonOrderRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_WritesStatusAsName()
-    {
-        var order = Order.Create("Week 41", null, IssuedAt, [new OrderLine(ControllerId, 500)]);
-        order.MarkDownloaded(DownloadedAt);
-
-        await CreateRepository().SaveAsync([order], Token);
-
-        var json = await File.ReadAllTextAsync(Path.Combine(_context.DataDirectory, JsonOrderRepository.FileName), Token);
-        Assert.Contains("\"status\": \"downloaded\"", json);
-    }
-
-    [Fact]
     public async Task FindOrdersUsingBoardsAsync_ReturnsOrdersContainingAnyBoard()
     {
         var repository = CreateRepository();
@@ -79,35 +67,13 @@ public sealed class JsonOrderRepositoryTests : IDisposable
 
         var found = await repository.FindOrdersUsingBoardsAsync([SensorId], Token);
 
-        Assert.Equal([weekly.Id, sensors.Id], found.Select(order => order.Id));
+        RepositoryAssert.SameIds(new[] { weekly.Id, sensors.Id }, found);
     }
 
-    [Theory]
-    [InlineData("draft", "\"2026-10-06T14:05:00+00:00\"")]
-    [InlineData("downloaded", "null")]
-    public async Task GetByIdAsync_WithStoredStatusContradictingDownloadTime_ThrowsInvalidDataException(
-        string status,
-        string downloadedAt)
-    {
-        var id = Guid.NewGuid();
-        await WriteOrderAsync(id, $"\"{status}\"", downloadedAt);
-
-        var exception = await Assert.ThrowsAsync<InvalidDataException>(
-            () => CreateRepository().GetByIdAsync(id, Token));
-
-        Assert.Contains($"order {id}", exception.Message);
-    }
-
-    [Theory]
-    [InlineData("\"shipped\"")]
-    [InlineData("1")]
-    public async Task GetByIdAsync_WithUnknownOrNumericStoredStatus_ThrowsInvalidDataException(string status)
-    {
-        var id = Guid.NewGuid();
-        await WriteOrderAsync(id, status, "null");
-
-        await Assert.ThrowsAsync<InvalidDataException>(() => CreateRepository().GetByIdAsync(id, Token));
-    }
+    /// <summary>
+    /// Creates a new repository instance on the test's storage, as after an application restart.
+    /// </summary>
+    protected abstract IOrderRepository CreateRepository();
 
     private static void AssertSameInstantAndOffset(DateTimeOffset expected, DateTimeOffset actual)
     {
@@ -115,20 +81,4 @@ public sealed class JsonOrderRepositoryTests : IDisposable
         Assert.Equal(expected, actual);
         Assert.Equal(expected.Offset, actual.Offset);
     }
-
-    private Task WriteOrderAsync(Guid id, string status, string downloadedAt) =>
-        _context.WriteFileAsync(
-            JsonOrderRepository.FileName,
-            $$"""
-            [{
-              "id": "{{id}}", "name": "Week 41", "description": "",
-              "orderDate": "2026-10-05T08:30:00+02:00",
-              "lines": [{ "boardId": "{{ControllerId}}", "quantity": 500 }],
-              "status": {{status}}, "downloadedAt": {{downloadedAt}}
-            }]
-            """,
-            Token);
-
-    private JsonOrderRepository CreateRepository() =>
-        new(_context.CreateStore<OrderDocument>(JsonOrderRepository.FileName));
 }

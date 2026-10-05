@@ -16,6 +16,10 @@ namespace SmtOrderManager.Application.Persistence;
 /// Loaded aggregates are independent of the stored state. Changing a loaded aggregate has no
 /// effect until it is passed to <see cref="SaveAsync"/>.
 /// </para>
+/// <para>
+/// Lists come back in no particular order. Callers that show them sort them, so every
+/// implementation can return what its storage delivers most naturally.
+/// </para>
 /// </remarks>
 /// <typeparam name="TAggregate">The aggregate root type.</typeparam>
 public interface IRepository<TAggregate>

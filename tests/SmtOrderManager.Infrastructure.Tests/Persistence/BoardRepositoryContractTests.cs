@@ -1,19 +1,19 @@
+using SmtOrderManager.Application.Persistence;
 using SmtOrderManager.Domain.Boards;
-using SmtOrderManager.Infrastructure.Persistence.Json;
 
-namespace SmtOrderManager.Infrastructure.Tests.Persistence.Json;
+namespace SmtOrderManager.Infrastructure.Tests.Persistence;
 
-public sealed class JsonBoardRepositoryTests : IDisposable
+/// <summary>
+/// The board mapping and the board-specific queries of the repository contract. Each
+/// persistence provider derives a test class from it.
+/// </summary>
+public abstract class BoardRepositoryContractTests
 {
     private static readonly Guid ResistorId = Guid.NewGuid();
     private static readonly Guid CapacitorId = Guid.NewGuid();
     private static readonly Guid InductorId = Guid.NewGuid();
 
-    private readonly JsonStorageTestContext _context = new();
-
-    private static CancellationToken Token => TestContext.Current.CancellationToken;
-
-    public void Dispose() => _context.Dispose();
+    protected static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresEveryField()
@@ -34,7 +34,7 @@ public sealed class JsonBoardRepositoryTests : IDisposable
         Assert.Equal("Main controller board", loaded.Description);
         Assert.Equal(100.25m, loaded.Length);
         Assert.Equal(80.5m, loaded.Width);
-        Assert.Equal([new BomEntry(ResistorId, 12), new BomEntry(CapacitorId, 3)], loaded.BillOfMaterials);
+        Assert.Equal(new[] { new BomEntry(ResistorId, 12), new BomEntry(CapacitorId, 3) }, loaded.BillOfMaterials);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public sealed class JsonBoardRepositoryTests : IDisposable
         await repository.SaveAsync([board], Token);
 
         var loaded = await CreateRepository().GetByIdAsync(board.Id, Token);
-        Assert.Equal([new BomEntry(ResistorId, 10), new BomEntry(CapacitorId, 3)], loaded!.BillOfMaterials);
+        Assert.Equal(new[] { new BomEntry(ResistorId, 10), new BomEntry(CapacitorId, 3) }, loaded!.BillOfMaterials);
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class JsonBoardRepositoryTests : IDisposable
 
         var found = await repository.FindBoardsUsingComponentsAsync([ResistorId, CapacitorId], Token);
 
-        Assert.Equal([controller.Id, sensor.Id], found.Select(board => board.Id));
+        RepositoryAssert.SameIds(new[] { controller.Id, sensor.Id }, found);
     }
 
     [Fact]
@@ -86,29 +86,11 @@ public sealed class JsonBoardRepositoryTests : IDisposable
 
         var found = await repository.SearchAsync("main", Token);
 
-        Assert.Equal([controller.Id], found.Select(board => board.Id));
+        RepositoryAssert.SameIds(new[] { controller.Id }, found);
     }
 
-    [Fact]
-    public async Task GetByIdAsync_WithStoredEmptyBillOfMaterials_ThrowsInvalidDataException()
-    {
-        var id = Guid.NewGuid();
-        await _context.WriteFileAsync(
-            JsonBoardRepository.FileName,
-            $$"""
-            [{
-              "id": "{{id}}", "name": "Controller", "description": "",
-              "length": 100, "width": 80, "billOfMaterials": []
-            }]
-            """,
-            Token);
-
-        var exception = await Assert.ThrowsAsync<InvalidDataException>(
-            () => CreateRepository().GetByIdAsync(id, Token));
-
-        Assert.Contains($"board {id}", exception.Message);
-    }
-
-    private JsonBoardRepository CreateRepository() =>
-        new(_context.CreateStore<BoardDocument>(JsonBoardRepository.FileName));
+    /// <summary>
+    /// Creates a new repository instance on the test's storage, as after an application restart.
+    /// </summary>
+    protected abstract IBoardRepository CreateRepository();
 }

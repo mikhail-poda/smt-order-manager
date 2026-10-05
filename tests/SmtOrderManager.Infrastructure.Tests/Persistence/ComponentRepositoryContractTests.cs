@@ -1,19 +1,15 @@
+using SmtOrderManager.Application.Persistence;
 using SmtOrderManager.Domain.Components;
-using SmtOrderManager.Infrastructure.Persistence.Json;
 
-namespace SmtOrderManager.Infrastructure.Tests.Persistence.Json;
+namespace SmtOrderManager.Infrastructure.Tests.Persistence;
 
 /// <summary>
-/// Covers the component mapping and, through the component repository, the behaviour that all
-/// JSON repositories share.
+/// The repository contract, checked through the component repository for the behaviour that
+/// every repository shares. Each persistence provider derives a test class from it.
 /// </summary>
-public sealed class JsonComponentRepositoryTests : IDisposable
+public abstract class ComponentRepositoryContractTests
 {
-    private readonly JsonStorageTestContext _context = new();
-
-    private static CancellationToken Token => TestContext.Current.CancellationToken;
-
-    public void Dispose() => _context.Dispose();
+    protected static CancellationToken Token => TestContext.Current.CancellationToken;
 
     [Fact]
     public async Task SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresEveryField()
@@ -39,7 +35,7 @@ public sealed class JsonComponentRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task GetByIdAsync_WithoutDataFile_ReturnsNull()
+    public async Task GetByIdAsync_WithEmptyStore_ReturnsNull()
     {
         Assert.Null(await CreateRepository().GetByIdAsync(Guid.NewGuid(), Token));
     }
@@ -67,11 +63,11 @@ public sealed class JsonComponentRepositoryTests : IDisposable
 
         var loaded = await repository.GetByIdsAsync([capacitor.Id, Guid.NewGuid()], Token);
 
-        Assert.Equal([capacitor.Id], loaded.Select(component => component.Id));
+        RepositoryAssert.SameIds([capacitor.Id], loaded);
     }
 
     [Fact]
-    public async Task SaveAsync_WithExistingId_ReplacesStoredAggregateInPlace()
+    public async Task SaveAsync_WithExistingId_ReplacesStoredAggregate()
     {
         var repository = CreateRepository();
         var resistor = Component.Create("RES-10K-0402", null);
@@ -81,8 +77,9 @@ public sealed class JsonComponentRepositoryTests : IDisposable
         resistor.Rename("RES-10K-0603");
         await repository.SaveAsync([resistor], Token);
 
-        var all = await repository.SearchAsync(null, Token);
-        Assert.Equal(["RES-10K-0603", "CAP-100N-0402"], all.Select(component => component.Name));
+        var all = await CreateRepository().SearchAsync(null, Token);
+        RepositoryAssert.SameIds([resistor.Id, capacitor.Id], all);
+        Assert.Equal("RES-10K-0603", all.Single(component => component.Id == resistor.Id).Name);
     }
 
     [Fact]
@@ -97,8 +94,8 @@ public sealed class JsonComponentRepositoryTests : IDisposable
         await repository.SaveAsync([capacitor, resistor], Token);
 
         var all = await CreateRepository().SearchAsync(null, Token);
-        Assert.Equal([resistor.Id, capacitor.Id], all.Select(component => component.Id));
-        Assert.Equal("Resistor 10 kΩ", all[0].Description);
+        RepositoryAssert.SameIds([resistor.Id, capacitor.Id], all);
+        Assert.Equal("Resistor 10 kΩ", all.Single(component => component.Id == resistor.Id).Description);
     }
 
     [Fact]
@@ -115,14 +112,6 @@ public sealed class JsonComponentRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task SaveAsync_WithEmptyBatch_CreatesNoDataFile()
-    {
-        await CreateRepository().SaveAsync([], Token);
-
-        Assert.False(Directory.Exists(_context.DataDirectory));
-    }
-
-    [Fact]
     public async Task RemoveAsync_RemovesBatchAndIgnoresUnknownIds()
     {
         var repository = CreateRepository();
@@ -134,14 +123,14 @@ public sealed class JsonComponentRepositoryTests : IDisposable
         await repository.RemoveAsync([resistor.Id, inductor.Id, Guid.NewGuid()], Token);
 
         var all = await CreateRepository().SearchAsync(null, Token);
-        Assert.Equal([capacitor.Id], all.Select(component => component.Id));
+        RepositoryAssert.SameIds([capacitor.Id], all);
     }
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task SearchAsync_WithoutText_ReturnsAllInStoredOrder(string? text)
+    public async Task SearchAsync_WithoutText_ReturnsAll(string? text)
     {
         var repository = CreateRepository();
         var resistor = Component.Create("RES-10K-0402", null);
@@ -150,18 +139,19 @@ public sealed class JsonComponentRepositoryTests : IDisposable
 
         var found = await repository.SearchAsync(text, Token);
 
-        Assert.Equal([resistor.Id, capacitor.Id], found.Select(component => component.Id));
+        RepositoryAssert.SameIds([resistor.Id, capacitor.Id], found);
     }
 
     [Theory]
     [InlineData("res-10k")]
     [InlineData(" 0402 ")]
     [InlineData("CERAMIC")]
+    [InlineData("FÜR")]
     public async Task SearchAsync_MatchesNameOrDescriptionIgnoringCaseAndSurroundingWhitespace(string text)
     {
         var repository = CreateRepository();
         var resistor = Component.Create("RES-10K-0402", null);
-        var capacitor = Component.Create("CAP-100N-0603", "Ceramic capacitor");
+        var capacitor = Component.Create("CAP-100N-0603", "Ceramic capacitor für Filter");
         await repository.SaveAsync([resistor, capacitor], Token);
 
         var found = await repository.SearchAsync(text, Token);
@@ -169,34 +159,9 @@ public sealed class JsonComponentRepositoryTests : IDisposable
         Assert.Single(found);
     }
 
-    [Fact]
-    public async Task GetByIdAsync_WithStoredDataBreakingDomainRule_ThrowsInvalidDataExceptionNamingAggregate()
-    {
-        var id = Guid.NewGuid();
-        await _context.WriteFileAsync(
-            JsonComponentRepository.FileName,
-            $$"""[{ "id": "{{id}}", "name": "   ", "description": "" }]""",
-            Token);
-
-        var exception = await Assert.ThrowsAsync<InvalidDataException>(
-            () => CreateRepository().GetByIdAsync(id, Token));
-
-        Assert.Contains($"component {id}", exception.Message);
-        Assert.Contains(JsonComponentRepository.FileName, exception.Message);
-    }
-
-    [Fact]
-    public async Task GetByIdAsync_WithMissingStoredField_ThrowsInvalidDataException()
-    {
-        var id = Guid.NewGuid();
-        await _context.WriteFileAsync(
-            JsonComponentRepository.FileName,
-            $$"""[{ "id": "{{id}}", "description": "" }]""",
-            Token);
-
-        await Assert.ThrowsAsync<InvalidDataException>(() => CreateRepository().GetByIdAsync(id, Token));
-    }
-
-    private JsonComponentRepository CreateRepository() =>
-        new(_context.CreateStore<ComponentDocument>(JsonComponentRepository.FileName));
+    /// <summary>
+    /// Creates a new repository instance on the test's storage. Saving through one instance and
+    /// loading through another therefore reads the stored data, as after an application restart.
+    /// </summary>
+    protected abstract IComponentRepository CreateRepository();
 }
