@@ -17,5 +17,5 @@ public sealed class JsonStorageOptions
     /// against the current working directory. The directory is created on the first write.
     /// </summary>
     [Required(AllowEmptyStrings = false)]
-    public string DataDirectory { get; set; } = "data";
+    public string DataDirectory { get; init; } = "data";
 }
