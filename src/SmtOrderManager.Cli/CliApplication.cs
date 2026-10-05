@@ -3,7 +3,9 @@ using Microsoft.Extensions.Options;
 using SmtOrderManager.Cli.Demo;
 using SmtOrderManager.Cli.Interaction;
 using SmtOrderManager.Cli.Menus;
+using SmtOrderManager.Infrastructure.Persistence;
 using SmtOrderManager.Infrastructure.Persistence.Json;
+using SmtOrderManager.Infrastructure.Persistence.Sqlite;
 using SmtOrderManager.Infrastructure.SmtLine;
 
 namespace SmtOrderManager.Cli;
@@ -15,7 +17,9 @@ internal sealed partial class CliApplication(
     MainMenu mainMenu,
     DemoDataSeeder demoDataSeeder,
     ConsolePrompts prompts,
-    IOptions<JsonStorageOptions> storageOptions,
+    IOptions<PersistenceOptions> persistenceOptions,
+    IOptions<SqliteStorageOptions> sqliteOptions,
+    IOptions<JsonStorageOptions> jsonOptions,
     IOptions<SimulatedSmtLineOptions> lineOptions,
     ILogger<CliApplication> logger)
 {
@@ -26,13 +30,13 @@ internal sealed partial class CliApplication(
     public async Task<int> RunAsync(CancellationToken cancellationToken)
     {
         var line = lineOptions.Value;
-        var dataDirectory = Path.GetFullPath(storageOptions.Value.DataDirectory);
+        var storage = DescribeStorage();
         var inboxDirectory = Path.GetFullPath(line.InboxDirectory);
 
-        LogStarted(logger, dataDirectory, line.LineId);
+        LogStarted(logger, storage, line.LineId);
 
         prompts.WriteLine("SMT Order Manager");
-        prompts.WriteLine($"Data directory: {dataDirectory}");
+        prompts.WriteLine($"Storage:        {storage}");
         prompts.WriteLine($"SMT line:       {line.LineId} (inbox: {inboxDirectory})");
 
         if (await demoDataSeeder.SeedIfEmptyAsync(cancellationToken))
@@ -54,8 +58,15 @@ internal sealed partial class CliApplication(
         return 0;
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Started with data directory {DataDirectory} and SMT line {LineId}")]
-    private static partial void LogStarted(ILogger logger, string dataDirectory, string lineId);
+    private string DescribeStorage() => persistenceOptions.Value.Provider switch
+    {
+        PersistenceProvider.Sqlite => $"SQLite database {Path.GetFullPath(sqliteOptions.Value.DatabasePath)}",
+        PersistenceProvider.Json => $"JSON files in {Path.GetFullPath(jsonOptions.Value.DataDirectory)}",
+        var other => other.ToString(),
+    };
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Started with storage {Storage} and SMT line {LineId}")]
+    private static partial void LogStarted(ILogger logger, string storage, string lineId);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Stopped by the user")]
     private static partial void LogStopped(ILogger logger);

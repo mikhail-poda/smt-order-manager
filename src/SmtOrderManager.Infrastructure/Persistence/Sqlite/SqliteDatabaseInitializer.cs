@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 
 namespace SmtOrderManager.Infrastructure.Persistence.Sqlite;
 
 /// <summary>
 /// Prepares the database file before the repositories use it: creates the directory and, if
-/// the file is new, the schema.
+/// the file is new, the schema. Runs as a hosted service, so every host prepares the database
+/// when it starts.
 /// </summary>
 /// <remarks>
 /// <c>EnsureCreated</c> creates the schema of a new database and leaves an existing one as it
@@ -12,12 +14,16 @@ namespace SmtOrderManager.Infrastructure.Persistence.Sqlite;
 /// </remarks>
 internal sealed class SqliteDatabaseInitializer(
     SqliteStorageOptions options,
-    IDbContextFactory<SmtOrderManagerDbContext> contextFactory)
+    IDbContextFactory<SmtOrderManagerDbContext> contextFactory) : IHostedService
 {
     private readonly SqliteStorageOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
     private readonly IDbContextFactory<SmtOrderManagerDbContext> _contextFactory =
         contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
+
+    public Task StartAsync(CancellationToken cancellationToken) => InitializeAsync(cancellationToken);
+
+    public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
