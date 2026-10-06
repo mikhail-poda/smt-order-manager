@@ -70,3 +70,112 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  image:
+    name: Container image
+    # Only an image whose code passed the tests and whose UI builds is built and published.
+    needs: [build-and-test, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      # The demo user from docker-compose.yml; its password, smt-demo, is public.
+      DEMO_PASSWORD_HASH: AQAAAAIAAYagAAAAEO26S4jq4t4azZDGaO9eMdEwR64YtZJaUoJY3ssEeLoQU7b8mEHqnRL7RW0kD4nfQQ==
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image for the smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: smt-order-manager:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run --detach --name smoke --publish 8080:8080 \
+            --env Auth__Username=demo \
+            --env Auth__PasswordHash="$DEMO_PASSWORD_HASH" \
+            smt-order-manager:ci
+
+          echo "Waiting for the API"
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://localhost:8080/health > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "The API did not become healthy."
+              exit 1
+            fi
+            sleep 2
+          done
+
+          echo "Health probe used by the Docker health check"
+          docker exec smoke dotnet SmtOrderManager.Api.dll health-check
+
+          # Responses are read completely before grep, so an early grep exit cannot fail curl
+          # under pipefail.
+          echo "Web UI"
+          page=$(curl --silent --fail http://localhost:8080/)
+          grep --quiet '<div id="root">' <<< "$page"
+
+          echo "API refuses requests without login"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:8080/api/orders)" = 401
+
+          echo "Login and demo data"
+          curl --silent --fail --cookie-jar cookies.txt \
+            --header 'Content-Type: application/json' \
+            --data '{"username":"demo","password":"smt-demo"}' \
+            http://localhost:8080/api/auth/login > /dev/null
+          orders=$(curl --silent --fail --cookie cookies.txt http://localhost:8080/api/orders)
+          grep --quiet 'Controllers and sensors' <<< "$orders"
+
+          echo "Smoke test passed"
+
+      - name: Container logs
+        if: failure()
+        run: docker logs smoke
+
+      - name: Log in to GitHub Container Registry
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        if: env.PUBLISH == 'true'
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+
+      - name: Build and push for amd64 and arm64
+        if: env.PUBLISH == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
