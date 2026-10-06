@@ -1,0 +1,19 @@
+# Runs the application locally: docker compose up --build, then open http://localhost:8080
+# and log in as demo / smt-demo. The data survives restarts in the named volume.
+services:
+  smt-order-manager:
+    build: .
+    image: smt-order-manager:local
+    ports:
+      - "8080:8080"
+    environment:
+      # The demo user. Create the hash for another password with:
+      # dotnet run --project src/SmtOrderManager.Api -- hash-password <password>
+      Auth__Username: demo
+      Auth__PasswordHash: "AQAAAAIAAYagAAAAEO26S4jq4t4azZDGaO9eMdEwR64YtZJaUoJY3ssEeLoQU7b8mEHqnRL7RW0kD4nfQQ=="
+    volumes:
+      - smt-data:/data
+    restart: unless-stopped
+
+volumes:
+  smt-data:

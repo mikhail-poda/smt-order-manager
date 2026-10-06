@@ -2,15 +2,21 @@ using Serilog;
 using SmtOrderManager.Api;
 using SmtOrderManager.Api.Authentication;
 using SmtOrderManager.Api.Endpoints;
+using SmtOrderManager.Api.Hosting;
 using SmtOrderManager.Application;
 using SmtOrderManager.Infrastructure;
 
-// Creates the value for Auth:PasswordHash without starting the server:
-// dotnet run --project src/SmtOrderManager.Api -- hash-password <password>
+// Two command-line modes that do not start the server. hash-password creates the value for
+// Auth:PasswordHash; health-check is the Docker health check of a running container.
 if (args is ["hash-password", var password])
 {
     Console.WriteLine(PasswordHashing.Hash(password));
-    return;
+    return 0;
+}
+
+if (args is ["health-check"])
+{
+    return await HealthProbe.RunAsync();
 }
 
 var builder = WebApplication.CreateBuilder(args);
@@ -49,3 +55,5 @@ app.MapBoardEndpoints().RequireAuthorization();
 app.MapOrderEndpoints().RequireAuthorization();
 
 await app.RunAsync();
+
+return 0;

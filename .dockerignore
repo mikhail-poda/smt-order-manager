@@ -1,0 +1,17 @@
+# Only src/ and the build settings are needed; everything else stays out of the build context.
+.git/
+.github/
+.idea/
+.vs/
+.vscode/
+docs/
+tests/
+**/bin/
+**/obj/
+**/node_modules/
+**/data/
+**/inbox/
+**/logs/
+**/*.user
+**/*.DotSettings.user
+src/SmtOrderManager.Api/wwwroot/
