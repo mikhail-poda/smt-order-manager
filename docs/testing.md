@@ -1,20 +1,23 @@
-﻿# Testing
+# Testing
 
 This document describes how the application is tested: the strategy per layer, what the tests cover and where to find representative examples. It does not list every test. The test names describe their cases (`Method_Scenario_Expectation`), and the test explorer of an IDE or `dotnet test` shows the complete, current list.
 
 ## Strategy
 
-Each production project except the CLI has its own test project, and each test project references only the layers it tests. Tests therefore follow the same dependency rule as the code, see [project dependencies](architecture.md#project-dependencies).
+Each .NET production project except the CLI has its own test project, and each test project references only the layers it tests. Tests therefore follow the same dependency rule as the code, see [project dependencies](architecture.md#project-dependencies).
 
 | Test project | Tests against | Test doubles |
 |---|---|---|
 | `SmtOrderManager.Domain.Tests` | Aggregates, value objects and the domain service, in isolation | None needed |
 | `SmtOrderManager.Application.Tests` | Use cases, payload mapping and serialization, the contract | In-memory repositories, a fake SMT line, a fixed time provider |
-| `SmtOrderManager.Infrastructure.Tests` | JSON files, the simulated SMT line, service registrations | Real files in temporary directories, a fixed time provider |
+| `SmtOrderManager.Infrastructure.Tests` | SQLite and JSON file repositories, the simulated SMT line, service registrations | Real database files and JSON files in temporary directories, a fixed time provider |
+| `SmtOrderManager.Api.Tests` | The real web host in memory, through HTTP | A SQLite file in a temporary directory, a fake SMT line, a test user |
 
-The domain is where the business rules live, so it has the most tests. The application tests check that use cases combine the rules correctly, for example that a batch is saved completely or not at all. The infrastructure tests check the technical promises: data survives a restart, writes are atomic, the simulated line answers as specified.
+The domain is where the business rules live, so it has the most tests. The application tests check that use cases combine the rules correctly, for example that a batch is saved completely or not at all. The infrastructure tests check the technical promises: data survives a restart, writes are atomic, both storage providers behave the same, the simulated line answers as specified. The API tests check what HTTP adds: status codes, error mapping and login.
 
 The console user interface has no automated tests. It only reads input, calls the use cases and prints their results, so its logic is covered by the tests of the layers below. Its wiring is covered by the service registration tests.
+
+The web UI has no automated tests either, for the same reason: it holds no business rules and shows the API's answers as they are. Its safety net is the strict TypeScript type check and the production build, which CI runs on every push. The container image has its own smoke test in CI, see [Container image](#container-image).
 
 ## Coverage by topic
 
@@ -105,23 +108,49 @@ When the producer test fails, the change is either intended and additive, so the
 
 ### Persistence
 
+Both storage providers fulfil the same repository contract, so the contract is tested once and run against both. The abstract classes `ComponentRepositoryContractTests`, `BoardRepositoryContractTests` and `OrderRepositoryContractTests` contain the tests; `Json…RepositoryTests` and `Sqlite…RepositoryTests` derive from them, provide the repository, and add the tests of their own provider. The test explorer therefore lists each contract test twice, once under each provider. A third provider would get the whole contract by deriving three classes.
+
 | Topic | Representative tests |
 |---|---|
-| Every field survives a restart | `JsonOrderRepositoryTests.SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresDownloadedStatus`, `JsonBoardRepositoryTests.SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresEveryField` |
+| Every field survives a restart | `OrderRepositoryContractTests.SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresDownloadedStatus`, `BoardRepositoryContractTests.SaveAsync_ThenGetByIdAsyncAfterRestart_RestoresEveryField` |
+| Search ignores case beyond ASCII, which SQLite's `LIKE` does not | `ComponentRepositoryContractTests.SearchAsync_MatchesNameOrDescriptionIgnoringCaseAndSurroundingWhitespace` |
+| Repository contract: replace, batch writes, search | `ComponentRepositoryContractTests.SaveAsync_WithNewAndExistingAggregates_ReplacesAndAppendsInOneBatch` |
+| JSON files keep the stored order | `JsonComponentRepositoryTests.SaveAsync_WithExistingId_KeepsStoredPositionAndAppendsNewOnes` |
+| SQLite leaves no child rows behind | `SqliteBoardRepositoryTests.SaveAsync_WithShorterBillOfMaterials_DeletesRemovedEntryRows`, `SqliteBoardRepositoryTests.RemoveAsync_DeletesBillOfMaterialsRows` |
+| The SQLite schema is created once and existing data kept | `SqliteDatabaseInitializerTests.InitializeAsync_WithMissingDirectory_CreatesDatabaseWithSchema`, `SqliteDatabaseInitializerTests.InitializeAsync_WithExistingDatabase_KeepsData` |
 | Atomic writes: a failed update leaves the file unchanged | `JsonFileStoreTests.UpdateAsync_WhenChangeThrows_KeepsDataFileUnchanged`, `JsonFileStoreTests.UpdateAsync_WithLeftoverTemporaryFileFromCrash_ReplacesIt` |
 | Concurrent updates lose nothing | `JsonFileStoreTests.UpdateAsync_WithConcurrentCalls_LosesNoUpdate` |
-| Damaged files are reported, never treated as empty | `JsonFileStoreTests.LoadAsync_WithInvalidContent_ThrowsInvalidDataExceptionNamingFile`, `JsonComponentRepositoryTests.GetByIdAsync_WithStoredDataBreakingDomainRule_ThrowsInvalidDataExceptionNamingAggregate` |
-| Repository contract: replace in place, batch writes, search | `JsonComponentRepositoryTests.SaveAsync_WithNewAndExistingAggregates_ReplacesAndAppendsInOneBatch` |
+| Damaged data is reported, never treated as empty | `JsonFileStoreTests.LoadAsync_WithInvalidContent_ThrowsInvalidDataExceptionNamingFile`, `JsonComponentRepositoryTests.GetByIdAsync_WithStoredDataBreakingDomainRule_ThrowsInvalidDataExceptionNamingAggregate`, `SqliteOrderRepositoryTests.GetByIdAsync_WithUnknownStoredStatus_ThrowsInvalidDataExceptionNamingOrder` |
 
 The application tests rely on in-memory fakes that must behave like the real repositories. `InMemoryRepositoryTests` checks that, for example that a loaded aggregate is a copy, so a use case that forgets to save is caught.
+
+### Web API
+
+The API tests start the real web host in memory with `WebApplicationFactory`, so routing, JSON settings, error mapping and login are tested together, exactly as configured in `Program`. Each test class gets its own host with its own SQLite file; only the SMT line is replaced by a fake, so its answers can be chosen. The business rules behind the endpoints are tested in the application tests; the API tests check only what HTTP adds.
+
+| Topic | Representative tests |
+|---|---|
+| Violations become 422 with every target and message | `ComponentEndpointsTests.Post_WithBlankName_Returns422WithViolationsAndStoresNothing`, `ComponentEndpointsTests.Delete_WithComponentUsedByBoard_Returns422AndKeepsComponent` |
+| An empty batch is a bad request | `ComponentEndpointsTests.Post_WithEmptyBatch_Returns400` |
+| A rejected download is an answer, an unreachable line an error | `OrderEndpointsTests.Download_WhenLineRejects_Returns200WithReasonsAndKeepsDraft`, `OrderEndpointsTests.Download_WhenLineUnavailable_Returns503` |
+| Every API route requires login | `AuthEndpointsTests.Get_WithoutLogin_Returns401` |
+| Wrong credentials are refused, also a differently cased username | `AuthEndpointsTests.Login_WithWrongCredentials_Returns401AndKeepsApiClosed` |
+| The cookie cannot be read by scripts or sent by other sites | `AuthEndpointsTests.Login_WithValidCredentials_SetsHttpOnlyStrictCookie` |
+| Health check and API description work without login | `HostEndpointsTests.Get_ReturnsOk` |
+| Password hashes use a random salt and are checked for their format | `PasswordHashingTests.Hash_SamePasswordTwice_UsesDifferentSalts`, `PasswordHashingTests.IsWellFormed_WithoutHashFormat_ReturnsFalse` |
+
+### Container image
+
+The image is tested in CI rather than in a test project. The workflow builds it, starts a container with the demo user and checks, with plain HTTP calls, that the health check and the container's health probe answer, that the web UI is served, that the API refuses calls without login, and that after logging in the demo data is there. Only an image that passes is published.
 
 ### Architecture and configuration
 
 | Topic | Representative tests |
 |---|---|
 | Infrastructure does not depend on the CLI | `DependencyRuleTests.InfrastructureAssembly_DoesNotReferenceCli` |
-| Every use case can be resolved | `ServiceRegistrationTests.AddApplicationAndInfrastructure_ResolvesEveryUseCase` |
-| Invalid configuration fails at startup | `ServiceRegistrationTests.ValidateOnStart_WithInvalidValue_ThrowsNamingOption` |
+| Every use case can be resolved, with either storage provider | `ServiceRegistrationTests.AddApplicationAndInfrastructure_ResolvesEveryUseCase` |
+| The provider setting selects the repositories; an unknown provider stops the start | `ServiceRegistrationTests.AddInfrastructure_WithJsonProvider_RegistersJsonRepositoriesWithoutDatabaseInitializer`, `ServiceRegistrationTests.AddInfrastructure_WithUnknownProvider_ThrowsNamingSetting` |
+| Invalid configuration fails at startup, but only for the active provider | `ServiceRegistrationTests.ValidateOnStart_WithInvalidValue_ThrowsNamingOption`, `ServiceRegistrationTests.ValidateOnStart_WithInvalidValueOfInactiveProvider_Passes` |
 
 The other dependency rules (domain references nothing, application references only the domain) are enforced by the project references themselves, so the compiler checks them.
 
@@ -130,7 +159,7 @@ The other dependency rules (domain references nothing, application references on
 - **Names** follow `Method_Scenario_Expectation`, for example `RemoveLine_WithLastLine_ThrowsAndKeepsLine`. A test checks one behaviour, and its name says which.
 - **Structure** follows arrange, act, assert, separated by blank lines.
 - **Deterministic values.** Time comes from a `FixedTimeProvider`, never from the system clock. The contract fixture uses fixed, readable identifiers (`0a…` for the order, `0b…` for boards, `0c…` for components).
-- **Isolation.** File system tests work in their own temporary directory under the system temp folder and delete it afterwards, so tests can run in parallel and leave nothing behind.
+- **Isolation.** File system, database and API tests work in their own temporary directory under the system temp folder and delete it afterwards, so tests can run in parallel and leave nothing behind. SQLite tests use real database files rather than an in-memory database, so they exercise the same file handling as the application.
 - **Cancellation.** Tests pass `TestContext.Current.CancellationToken`, so a cancelled test run stops promptly.
 - **Business rules are tested where they live.** A rule of an aggregate is tested in the domain tests; the application tests only check that a broken rule becomes a violation and nothing is saved.
 
@@ -143,3 +172,12 @@ dotnet test
 ```
 
 Each test project can also be run on its own by passing its folder, for example `tests/SmtOrderManager.Domain.Tests`. The test explorers of Visual Studio, Rider and VS Code show every test by name and allow running a single class or test.
+
+The web UI is checked from its folder:
+
+```bash
+cd src/SmtOrderManager.Web
+npm ci
+npm run typecheck
+npm run build
+```

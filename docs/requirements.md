@@ -81,20 +81,22 @@ The boundary follows the chosen interpretation of the brief: boards and componen
 ### Version control
 
 - [x] Project hosted in a free version control system
-- [ ] Repository accessible for review (public or restricted access)
-- [ ] All code changes committed to the remote repository
+- [x] Repository accessible for review (public or restricted access)
+- [x] All code changes committed to the remote repository
 
 ### CI/CD
 
-- [ ] Pipeline builds the application automatically on each commit
-- [ ] Pipeline deploys the application to a free-tier cloud provider
+- [x] Pipeline builds and tests the application automatically on each commit
+- [x] Pipeline publishes a container image that can run on any container platform
+
+The original item asked the pipeline to deploy the application to a free-tier cloud provider. It was agreed instead that the reviewers download the published image and run it themselves, so the pipeline publishes the image rather than deploying it. The image follows the [container rules](architecture.md#container-rules) that make it runnable on any container platform.
 
 ### Web interface
 
-- [ ] Web UI accessible via login
-- [ ] Web UI communicates with a backend Web API
-- [ ] CRUD for orders, boards and components in the web UI
-- [ ] Authentication (custom login or free identity provider)
+- [x] Web UI accessible via login
+- [x] Web UI communicates with a backend Web API
+- [x] CRUD for orders, boards and components in the web UI
+- [x] Authentication (custom login or free identity provider): custom cookie login, see [design policies](#design-policies-and-extensions)
 
 ### Persistence upgrade
 
@@ -102,19 +104,21 @@ Phase 1 already satisfies the challenge's persistence requirement by storing JSO
 
 In Phase 2, **SQLite** becomes the default persistence. The JSON-file repositories from Phase 1 remain available as an alternative implementation, selected via configuration. The domain and application layers stay independent of the storage technology.
 
-- [ ] Add SQLite persistence as the default storage
-- [ ] Implement SQLite repositories behind the same persistence abstractions used by Phase 1
-- [ ] Keep the JSON-file repositories selectable via configuration
-- [ ] Preserve JSON serialization for interoperability: order-download payload and Web API request/response bodies
+- [x] Add SQLite persistence as the default storage
+- [x] Implement SQLite repositories behind the same persistence abstractions used by Phase 1
+- [x] Keep the JSON-file repositories selectable via configuration
+- [x] Preserve JSON serialization for interoperability: order-download payload and Web API request/response bodies
 
 ### Containerization
 
 SQLite is an embedded database without a server process. "Containerizing the database" therefore means running SQLite inside the API container and storing the database file on a persistent Docker volume, rather than running a separate database container.
 
-- [ ] Entire solution containerized (API with embedded SQLite, frontend)
-- [ ] Database file stored on a persistent volume
-- [ ] Dockerfile and docker-compose.yml provided
-- [ ] Containers runnable both locally and in the cloud
+- [x] Entire solution containerized (API with embedded SQLite, frontend)
+- [x] Database file stored on a persistent volume
+- [x] Dockerfile and docker-compose.yml provided
+- [x] Containers runnable both locally and in the cloud
+
+The web UI is served by the API, so the solution is one image and one container. Running in the cloud was not exercised with a specific provider (see [CI/CD](#cicd)); the [container rules](architecture.md#container-rules) are what make the image runnable there in principle.
 
 ## Interpretations and design decisions
 
@@ -152,6 +156,10 @@ The detailed reasoning is described in the [domain model](domain-model.md).
 - **Timestamps.** The order date and the time of download are stored as `DateTimeOffset`, so they stay unambiguous across time zones.
 - **Order download enhancement.** The simulated production payload may include calculated total component demand. This is an extension, not an explicit challenge requirement.
 - **Persistence evolution.** Phase 1 uses JSON files. Phase 2 adds SQLite repositories as the default, keeps JSON-file repositories selectable, and does not change the domain model.
+- **Persistence provider selection.** `Persistence:Provider` selects SQLite or JSON files when the application starts. Both providers fulfil the same repository contract, checked by one shared set of tests. See [Persistence](architecture.md#persistence).
+- **Schema without migrations.** The SQLite schema is created on the first start with `EnsureCreated`. This keeps the exercise simple but cannot evolve an existing database; a schema change in production would require migrations.
+- **Minimal web UI.** The web UI only collects input, calls the Web API and shows its answers. All business rules live in the API: the UI shows every violation exactly as the API reports it and does not repeat any check, so the rules exist in one place.
+- **Cookie login with a configured user.** The Web API has one user, configured with a username and a password hash. A login sets an encrypted, `HttpOnly`, `SameSite=Strict` cookie; every API call except login, health check and API description requires it. A user store, roles or an external identity provider would add effort without showing anything new for this exercise. See [Authentication](architecture.md#authentication).
 - **Unavailable line.** A configuration switch makes the simulated line unreachable, so the handling and logging of technical failures can be demonstrated.
-- **Demo data.** On a start with an empty store, the console application creates a small data set through the regular use cases: one order that the simulated line accepts and one that it rejects because of a board's dimensions. It can be switched off via configuration.
-- **Test projects.** Domain, application and infrastructure each have their own test project, so tests follow the same dependency rule as the code. The contract test of the download payload lives next to the contract in the application tests. See [project dependencies](architecture.md#project-dependencies).
+- **Demo data.** On a start with an empty store, the console application and the Web API create a small data set through the regular use cases: one order that the simulated line accepts and one that it rejects because of a board's dimensions. It can be switched off via configuration.
+- **Test projects.** Domain, application, infrastructure and the Web API each have their own test project, so tests follow the same dependency rule as the code. The contract test of the download payload lives next to the contract in the application tests. See [project dependencies](architecture.md#project-dependencies).
